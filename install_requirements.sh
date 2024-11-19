@@ -4,7 +4,7 @@ venvPath="venv"
 # Cria o ambiente virtual, se ainda não existir
 if [ ! -d "$venvPath" ]; then
     echo "Criando o ambiente virtual..."
-    python3 -m venv $venvPath
+    python3.10 -m venv $venvPath
 else
     echo "Ambiente virtual já existe."
 fi

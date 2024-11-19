@@ -1,0 +1,30 @@
+# Ignore Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environment directories
+myenv/
+venv/
+
+# Ignore Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore install requirements scripts
+install_requirements.ps1
+install_requirements.sh
+
+
+
+# Ignore any other temporary files that might be created
+*.log
+*.out
+*.error
+
+# Ignore dataset files if they are too large or not needed in the repository
+dataset/
+
+# Ignore config and state files
+*.swp
+*.swo
