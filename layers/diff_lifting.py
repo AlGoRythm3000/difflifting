@@ -2,18 +2,52 @@ import torch.nn
 
 from dataset.dataset_handler import remove_duplicated_edges
 from preprocessing.preprocessing import remove_duplicate_edges
+from torch_geometric.transforms import BaseTransform
+from torch_geometric.data import Data, Batch
 
 
+
+class ProjectionSum(BaseTransform):
+    r"""Lift r-cell features to r+1-cells by projection."""
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}()"
+
+    def lift_features(self, data):
+        r"""Project r-cell features of a graph to r+1-cell structures."""
+        keys = sorted(
+            [key.split("_")[1] for key in data if ("incidence" in key and "-" not in key)]
+        )
+        for elem in keys:
+            if f"x_{elem}" not in data:
+                idx_to_project = 0 if elem == "hyperedges" else int(elem) - 1
+                data["x_" + elem] = torch.matmul(
+                    abs(data["incidence_" + elem].t()), data[f"x_{idx_to_project}"]
+                )
+        return data
+
+    def forward(self, data):
+        r"""Apply the lifting to the input data."""
+        data = self.lift_features(data)
+        return data
 class DiffLifting(torch.nn.Module):
 
-    def __init__(self, gnn, pool):
+    def __init__(self, gnn, pool, mlp, k):
         super(DiffLifting, self).__init__()
         self.gnn = gnn
         self.pool = pool
+        self.k = k
+        self.mlp = mlp
+        self.triangle_count = 0
+        self.projection_sum = ProjectionSum()
 
     def forward(self, data):
         # edge_index_undirected, vertex_slices, edge_slices, batch = remove_duplicate_edges(data)
-        edge_index_undirected = remove_duplicated_edges(data.edge_index)
+        # edge_index_undirected = remove_duplicate_edges(data.edge_index)
+        edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
         embeddings = self.gnn(data.x, data.edge_index)
         distances = torch.cdist(embeddings, embeddings)
         knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
@@ -72,5 +106,7 @@ class DiffLifting(torch.nn.Module):
         data.x_1 = lifted_embeddings
         data.laplacian_up = laplacian_up
         data.laplacian_down = laplacian_down
+        data.node_edge_matrix = node_edge_matrix
+
 
         return data

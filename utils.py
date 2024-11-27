@@ -58,8 +58,8 @@ def parse_args() -> argparse.Namespace:
         default= "NCI1",
         choices=["ogbg-molhiv", "ogbg-molpcba", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "CORA", "CITESEER", "PUBMED", "KARATECLUB"],
     )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate.")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size.")
+    parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
     )

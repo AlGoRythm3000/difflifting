@@ -14,5 +14,4 @@ class TNN(nn.Module):
 
     def forward(self, x, laplacian_up, laplacian_down, node_edge_matrix,batch):
         x = self.base_model(x, laplacian_up, laplacian_down)
-        tnn_output = self.pooling_fun(torch.sparse.mm(node_edge_matrix, x), batch)
-        return torch.sigmoid(self.linear(tnn_output))
+        return x

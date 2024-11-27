@@ -34,7 +34,7 @@ if __name__ == '__main__':
     gnn = GNN(in_channels=num_features, hidden_channels=16, out_channels=8)
     model = TNN_KNN_MLP_G(gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes, k=3)
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
     criterion = nn.CrossEntropyLoss()
 
 
