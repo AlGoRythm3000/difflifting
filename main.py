@@ -18,7 +18,8 @@ if __name__ == '__main__':
 
     args = parse_args()
     set_seed(args.seed)
-    data, num_features, num_classes = choose_dataset(args.dataset)
+    data, num_features, num_classes = choose_dataset(args)
+
     data.to(device)
     print(data.edge_index_undirected)
 

@@ -73,12 +73,12 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     )
     valid_loader = DataLoader(
         val_set,
-        batch_size=val_set.len(),
+        batch_size=batch_size,
         shuffle=False,
     )
     test_loader = DataLoader(
         test_set,
-        batch_size=test_set.len(),
+        batch_size=batch_size,
         shuffle=False,
     )
     return train_loader, valid_loader, test_loader
@@ -113,7 +113,7 @@ def divide_train_val_test_split(dataset: PygGraphPropPredDataset, batch_size):
         return train_loader, valid_loader, test_loader
 
 
-def get_datasets(dataset: str, batch_size, dim=None, seed=42):
+def get_graph_classification_dataset(dataset: str, batch_size, dim=None, seed=42):
     """Returns DataLoaders for the given dataset.
 
     Args:
@@ -132,11 +132,13 @@ def get_datasets(dataset: str, batch_size, dim=None, seed=42):
 
     elif dataset == "ZINC":
         train_set, val_set, test_set = get_zinc()
-        return get_data_loaders(train_set, test_set, val_set, batch_size)
+        dataloaders = get_data_loaders(train_set, test_set, val_set, batch_size)
     else:
         dataset = tu_datasets(dataset)
         train_set, val_set, test_set = data_split(dataset, seed)
-        return get_data_loaders(train_set, test_set, val_set, batch_size)
+        dataloaders = get_data_loaders(train_set, test_set, val_set, batch_size)
+
+    return dataloaders, dataset.num_features, dataset.num_classes
 
 
 def get_zinc():
@@ -254,21 +256,7 @@ def get_node_prediction_dataset(dataset, dim=None, seed=42):
 
     return data, dataset.num_features, dataset.num_classes
 
-
-def get_graph_classification_dataset(dataset, seed=42):
-    """Loads a dataset for graph-level classification tasks.
-
-    Args:
-        dataset (str): The name of the dataset to load. Options: KARATECLUB, Cora, CiteSeer, PubMed.
-        seed (int, optional): The random seed for splitting the dataset. Defaults to 42.
-
-    Returns:
-        A tuple containing the DataLoaders for the training, validation, and testing sets.
-    """
-    raise NotImplementedError
-
-
-def choose_dataset(data):
+def choose_dataset(args):
     """Chooses the appropriate dataset function based on the input data.
 
     Args:
@@ -278,7 +266,7 @@ def choose_dataset(data):
         A function that loads the dataset. The function is either
         `get_node_prediction_dataset` or `get_graph_classification_dataset`.
     """
-    if data in NODES_PREDICTION_DATASET:
-        return get_node_prediction_dataset(data)
+    if args.dataset in NODES_PREDICTION_DATASET:
+        return get_node_prediction_dataset(args.dataset)
     else:
-        return get_graph_classification_dataset(data)
+        return get_graph_classification_dataset(args.dataset, args.batch_size)

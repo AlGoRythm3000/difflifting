@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from model.TNN import TNN
 from torch_geometric.transforms import BaseTransform
 
+from preprocessing.preprocessing import remove_duplicate_edges
+
 
 class ProjectionSum(BaseTransform):
     r"""Lift r-cell features to r+1-cells by projection."""
@@ -37,9 +39,9 @@ class ProjectionSum(BaseTransform):
         return data
 
 
-class TNN_KNN_MLP(nn.Module):
+class TNN_KNN_MLP_G(nn.Module):
     def __init__(self, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2):
-        super(TNN_KNN_MLP, self).__init__()
+        super(TNN_KNN_MLP_G, self).__init__()
         self.gnn = gnn
         self.k = k
         self.pool = global_mean_pool
@@ -61,15 +63,18 @@ class TNN_KNN_MLP(nn.Module):
         )
         self.projection_sum = ProjectionSum()
 
-    def forward(self, x, edge_index, edge_index_undirected, batch):
-        embeddings = self.gnn(x, edge_index)
+    def forward(self, batch):
+        data = batch
+
+        edge_index_undirected, vertex_slices, edge_slices, batch = remove_duplicate_edges(batch)
+
+        embeddings = self.gnn(data.x, data.edge_index)
         distances = torch.cdist(embeddings, embeddings)
         knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
-        remove_duplicated_edges(edge_i)
         num_edges = edge_index_undirected.size(1)
         max_triangles = embeddings.size(0)
         incidence_matrix_temp = torch.zeros(
-            (num_edges, max_triangles), device=x.device
+            (num_edges, max_triangles), device=data.x.device
         )
 
         edge_map = {tuple(sorted(edge)): idx for idx, edge in enumerate(edge_index_undirected.T.tolist())}
@@ -102,7 +107,7 @@ class TNN_KNN_MLP(nn.Module):
 
         incidence_matrix = incidence_matrix_temp.clone().requires_grad_()
 
-        node_edge_matrix = torch.zeros((x.size(0), num_edges), device=x.device)
+        node_edge_matrix = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
         for idx, edge in enumerate(edge_index_undirected.T):
             node_edge_matrix[edge[0], idx] = 1
             node_edge_matrix[edge[1], idx] = 1
@@ -123,7 +128,7 @@ class TNN_KNN_MLP(nn.Module):
         laplacian_down = node_edge_matrix.T @ node_edge_matrix
         #print('ldown shape:', laplacian_down.shape)
         #print('lup shape: ', laplacian_up.shape)
-        tnn_output = self.tnn(lifted_embeddings, laplacian_up=laplacian_up.to_sparse(), laplacian_down=laplacian_down.to_sparse())
-        #print('tnn_output shape: ', tnn_output.shape)
-        #torch.softmax(torch.sparse.mm(incidence_0_1, y_hat_edge), dim=1)
-        return F.log_softmax(torch.sparse.mm(node_edge_matrix,tnn_output), dim=-1)
+        tnn_output = self.tnn(lifted_embeddings, laplacian_up=laplacian_up.to_sparse(),
+                              laplacian_down=laplacian_down.to_sparse(),node_edge_matrix=node_edge_matrix, batch=batch)
+
+        return F.log_softmax(tnn_output, dim=-1)
