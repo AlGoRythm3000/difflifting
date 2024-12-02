@@ -65,7 +65,7 @@ class TNN_KNN_MLP(nn.Module):
         embeddings = self.gnn(x, edge_index)
         distances = torch.cdist(embeddings, embeddings)
         knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
-        remove_duplicated_edges(edge_i)
+        # remove_duplicated_edges(edge_i)
         num_edges = edge_index_undirected.size(1)
         max_triangles = embeddings.size(0)
         incidence_matrix_temp = torch.zeros(

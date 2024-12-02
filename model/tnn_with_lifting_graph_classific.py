@@ -16,7 +16,7 @@ from preprocessing.preprocessing import remove_duplicate_edges
 
 
 class TNN_KNN_MLP_G(nn.Module):
-    def __init__(self, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2):
+    def __init__(self, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, rank=2):
         super(TNN_KNN_MLP_G, self).__init__()
         self.gnn = gnn
         self.k = k
@@ -47,8 +47,9 @@ class TNN_KNN_MLP_G(nn.Module):
         data = batch
         graphs_lifted = []
         data = self.diff_lifting(data)
-        tnn_output = self.tnn(data.x_1, laplacian_up=data.laplacian_up.to_sparse(),
-                              laplacian_down=data.laplacian_down.to_sparse(),node_edge_matrix=data.node_edge_matrix, batch=batch)
-        out = self.classifier(self.pool(torch.spmm(data.node_edge_matrix,tnn_output), data.batch))
+        # tnn_output = self.tnn(data.x_1, laplacian_up=data.laplacian_up.to_sparse(),
+        #                       laplacian_down=data.laplacian_down.to_sparse(),node_edge_matrix=data.node_edge_matrix, batch=batch)
+        tnn_output = self.tnn(data)
+        out = self.classifier(self.pool(torch.spmm(data.node_edge_matrix,tnn_output[0]) + tnn_output[1], data.batch))
 
         return F.log_softmax(out, dim=-1)

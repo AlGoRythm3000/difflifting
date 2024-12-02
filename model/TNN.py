@@ -1,4 +1,6 @@
-from torch import nn 
+from topomodelx.nn.hypergraph.unigcn import UniGCN
+from topomodelx.nn.simplicial.sccnn import SCCNN
+from torch import nn
 import torch
 from topomodelx.nn.simplicial.san import SAN
 from torch_geometric.nn import global_mean_pool
