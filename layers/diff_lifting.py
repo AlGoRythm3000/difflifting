@@ -46,8 +46,6 @@ class DiffLifting(torch.nn.Module):
         self.projection_sum = ProjectionSum()
 
     def forward(self, data):
-        # edge_index_undirected, vertex_slices, edge_slices, batch = remove_duplicate_edges(data)
-        # edge_index_undirected = remove_duplicate_edges(data.edge_index)
         edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
         embeddings = self.gnn(data.x, data.edge_index)
         distances = torch.cdist(embeddings, embeddings)
@@ -101,8 +99,6 @@ class DiffLifting(torch.nn.Module):
         }
         lifted_data = self.projection_sum(data_for_lifting)
 
-        # laplacian_up = incidence_matrix @ incidence_matrix.T
-        # laplacian_down = node_edge_matrix.T @ node_edge_matrix
 
         data.x_1 = lifted_data["x_1"]
         data.x_2 = lifted_data["x_2"]
@@ -120,7 +116,6 @@ class DiffLifting(torch.nn.Module):
         data.laplacian_up_1 = torch.spmm(data_for_lifting["incidence_2"], data_for_lifting["incidence_2"].T).to_sparse_coo()
         data.laplacian_down_1 = torch.spmm(data_for_lifting["incidence_1"].T, data_for_lifting["incidence_1"]).to_sparse_coo()
 
-        # data.laplacian_up_2 = torch.spmm(data_for_lifting["incidence_2"].T, data_for_lifting["incidence_2"]).to_sparse_coo()
         data.laplacian_down_2 = torch.spmm(data_for_lifting["incidence_2"].T, data_for_lifting["incidence_2"]).to_sparse_coo()
         data.node_edge_matrix = node_edge_matrix
 

@@ -63,7 +63,6 @@ if __name__ == '__main__':
         factor=0.5,
         min_lr=1e-6,
         patience=args.lr_decay_patience,
-        verbose=True,
     )
     loss_fn = torch.nn.CrossEntropyLoss()
     evaluator = None

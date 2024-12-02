@@ -5,7 +5,7 @@ from tqdm import tqdm
 def train(loader, model, loss_fn, optimizer, device):
     model.train()
     train_losses = []
-    for batch in loader:
+    for batch in tqdm(loader):
         batch = batch.to(device)
         optimizer.zero_grad()
         out = model(batch)
