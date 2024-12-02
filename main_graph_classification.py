@@ -32,9 +32,9 @@ if __name__ == '__main__':
     # raise Exception
     # num_classes = data.y.max().item() + 1
     gnn = GNN(in_channels=num_features, hidden_channels=16, out_channels=8)
-    model = TNN_KNN_MLP_G(gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes, k=3)
+    model = TNN_KNN_MLP_G(num_features, gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes, k=3)
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
     criterion = nn.CrossEntropyLoss()
 
 
@@ -63,7 +63,6 @@ if __name__ == '__main__':
         factor=0.5,
         min_lr=1e-6,
         patience=args.lr_decay_patience,
-        verbose=True,
     )
     loss_fn = torch.nn.CrossEntropyLoss()
     evaluator = None

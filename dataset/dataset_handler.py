@@ -128,7 +128,7 @@ def get_graph_classification_dataset(dataset: str, batch_size, dim=None, seed=42
     if dataset.startswith("ogbg"):
         dataset = get_ogb_data(dataset)
         train_loader, val_loader, test_loader = divide_train_val_test_split(dataset, batch_size)
-        return train_loader, val_loader, test_loader
+        dataloaders = (train_loader, val_loader, test_loader)
 
     elif dataset == "ZINC":
         train_set, val_set, test_set = get_zinc()

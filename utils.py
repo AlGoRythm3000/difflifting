@@ -51,15 +51,22 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="gcn", choices=["gcn", "gin", "linear"])
-    parser.add_argument("--tnn", type=str, default="san", choices=["san", "scn", "sccn"])
+    parser.add_argument("--tnn", type=str, default="san", choices=["cwn", "scn", "sccnn"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default= "NCI1",
-        choices=["ogbg-molhiv", "ogbg-molpcba", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "CORA", "CITESEER", "PUBMED", "KARATECLUB"],
+        default="ENZYMES",
+        choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG"],
     )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate.")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size.")
+    parser.add_argument(
+        "--lifting",
+        type=str,
+        default="diff",
+        choices=["clique", "khop", "random_latent", "diffLifting", "IndependentSets", "NeighborhoodLifting", "DowkerLifting", "VietorisRipsLifting", "GraphInducedLifting",
+                 "LineLifting", "EccentricityLifting", "DnDLifting", "NeighbourhoodComplexLifting"],
+    )
+    parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
     )
