@@ -16,7 +16,7 @@ from preprocessing.preprocessing import remove_duplicate_edges
 
 
 class TNN_KNN_MLP_G(nn.Module):
-    def __init__(self, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, rank=2):
+    def __init__(self,in_channels, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, rank=2):
         super(TNN_KNN_MLP_G, self).__init__()
         self.gnn = gnn
         self.k = k
@@ -34,12 +34,12 @@ class TNN_KNN_MLP_G(nn.Module):
         self.classifier = nn.Linear(gnn.out_channels, num_classes)
         self.diff_lifting = DiffLifting(self.gnn, self.pool, self.mlp, self.k)
         self.tnn = TNN(
-            in_channels=gnn.out_channels,
+            in_channels=in_channels,
             hidden_channels=tnn_hidden_dim,
             out_channels=num_classes,
         )
         self.classifier = nn.Sequential(
-            nn.Linear(tnn_hidden_dim, num_classes),
+            nn.Linear(3*in_channels, num_classes),
         )
         # self.projection_sum = ProjectionSum()
 
@@ -50,6 +50,11 @@ class TNN_KNN_MLP_G(nn.Module):
         # tnn_output = self.tnn(data.x_1, laplacian_up=data.laplacian_up.to_sparse(),
         #                       laplacian_down=data.laplacian_down.to_sparse(),node_edge_matrix=data.node_edge_matrix, batch=batch)
         tnn_output = self.tnn(data)
-        out = self.classifier(self.pool(torch.spmm(data.node_edge_matrix,tnn_output[0]) + tnn_output[1], data.batch))
+        #Redout Model
+        pool_0 = self.pool(tnn_output[0], data.batch)
+        pool_1 = self.pool(torch.spmm(data.node_edge_matrix,tnn_output[1]), data.batch)
+        pool_2 = self.pool(torch.spmm(data.node_edge_matrix,torch.mm(data.incidence_2, tnn_output[2])), data.batch)
+        out = torch.cat([pool_0, pool_1, pool_2], dim=1)
+        out = self.classifier(out)
 
         return F.log_softmax(out, dim=-1)

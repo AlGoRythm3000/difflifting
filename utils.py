@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="KARATECLUB",
+        default="NCI1",
         choices=["ogbg-molhiv", "ogbg-molpcba", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "CORA", "CITESEER", "PUBMED", "KARATECLUB"],
     )
     parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")

@@ -3,7 +3,7 @@ import torch_geometric.utils
 
 from dataset.dataset_handler import remove_duplicated_edges
 from preprocessing.preprocessing import remove_duplicate_edges
-from torch_geometric.transforms import BaseTransform
+from torch_geometric.transforms import BaseTransform, to_sparse_tensor
 from torch_geometric.data import Data, Batch
 
 
@@ -95,7 +95,7 @@ class DiffLifting(torch.nn.Module):
 
         # Apply ProjectionSum to lift node features to edge features
         data_for_lifting = {
-            "x_0": embeddings,  # Node features
+            "x_0": data.x,  # Node features
             "incidence_1": node_edge_matrix,  # Node-to-edge incidence matrix
             "incidence_2": incidence_matrix, #edge_to-triangle
         }
@@ -115,20 +115,20 @@ class DiffLifting(torch.nn.Module):
                     )
 
         data.laplacian_up_0 = laplacian_0
-        data.laplacian_down_0 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
+        # data.laplacian_down_0 = torch.zeros((data.x.size(0), num_edges), device=data.x.device).to_sparse_coo()
 
-        data.laplacian_up_1 = torch.spmm(data_for_lifting["incidence_1"].T, data_for_lifting["incidence_1"])
-        data.laplacian_down_1 = torch.spmm(data.laplacian_up_0, data.laplacian_up_0.T)
+        data.laplacian_up_1 = torch.spmm(data_for_lifting["incidence_2"], data_for_lifting["incidence_2"].T).to_sparse_coo()
+        data.laplacian_down_1 = torch.spmm(data_for_lifting["incidence_1"].T, data_for_lifting["incidence_1"]).to_sparse_coo()
 
-        data.laplacian_up_2 = torch.spmm(data_for_lifting["incidence_2"].T, data_for_lifting["incidence_2"])
-        data.laplacian_down_2 = torch.spmm(data.laplacian_up_1, data.laplacian_up_1.T)
+        # data.laplacian_up_2 = torch.spmm(data_for_lifting["incidence_2"].T, data_for_lifting["incidence_2"]).to_sparse_coo()
+        data.laplacian_down_2 = torch.spmm(data_for_lifting["incidence_2"].T, data_for_lifting["incidence_2"]).to_sparse_coo()
         data.node_edge_matrix = node_edge_matrix
 
         data.incidence_1 = data_for_lifting.get("incidence_1")
         data.incidence_2 = data_for_lifting.get("incidence_2")
 
-        data.hodge_laplacian_0 = data.laplacian_up_0  + data.laplacian_down_0
+        data.hodge_laplacian_0 = data.laplacian_up_0  #+ data.laplacian_down_0
         data.hodge_laplacian_1 = data.laplacian_up_1  + data.laplacian_down_1
-        data.hodge_laplacian_2 = data.laplacian_up_2  + data.laplacian_down_2
+        data.hodge_laplacian_2 =  data.laplacian_down_2
 
         return data
