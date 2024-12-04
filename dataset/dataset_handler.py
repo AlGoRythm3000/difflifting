@@ -10,7 +10,18 @@ import torch_geometric.transforms as T
 from torch_geometric.datasets import KarateClub
 from torch_geometric.datasets import Planetoid
 
-NODES_PREDICTION_DATASET = ["CORA", "CITESEER", "PUBMED", "KARATECLUB"] 
+from tools.collate import collate_fn
+from tools.lifting.clique_lifting import SimplicialCliqueLifting
+from tools.lifting.khop import SimplicialKHopLifting
+from tools.lifting.neighboorhood_complex import NeighborhoodComplexLifting
+from tools.normalize import normalize_matrix
+
+NODES_PREDICTION_DATASET = ["CORA", "CITESEER", "PUBMED", "KARATECLUB"]
+LIFTINGS = {
+    "SimplicialCliqueLifting":SimplicialCliqueLifting,
+    "NeighborhoodComplexLifting": NeighborhoodComplexLifting,
+    "SimplicialKHopLifting":SimplicialKHopLifting,
+}
 
 class FilterConstant(object):
   def __init__(self, dim):
@@ -41,8 +52,8 @@ class FilterConstant(object):
     return data
 
 
-def get_ogb_data(name: str ) -> PygGraphPropPredDataset:
-    """Loads the OGB dataset specified by name.
+def get_ogb_data(name: str) -> PygGraphPropPredDataset:
+    """Loads the OGB dataset specified by name and ensures features are float.
 
     Args:
         name (str): The name of the OGB dataset to load.
@@ -53,9 +64,9 @@ def get_ogb_data(name: str ) -> PygGraphPropPredDataset:
     path = osp.dirname(osp.realpath(__file__))
     dataset = PygGraphPropPredDataset(name=name, root=path)
 
+
+
     return dataset
-
-
 def get_data_loaders(train_set, val_set, test_set, batch_size):
     """Returns three DataLoaders from the given datasets.
 
@@ -68,18 +79,36 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     Returns:
         A tuple containing the DataLoaders for training, validation, and testing.
     """
+    from torch.utils.data import DataLoader
+
+    num_workers: int = 0,
+    pin_memory: bool = False,
+    train_loader = DataloadDataset(
+        train_set
+    )
     train_loader = DataLoader(
-        train_set, batch_size=batch_size, shuffle=True
+        train_loader,
+        batch_size,
+        shuffle=True,
+        collate_fn=collate_fn
+    )
+    valid_loader = DataloadDataset(
+        val_set
     )
     valid_loader = DataLoader(
-        val_set,
-        batch_size=batch_size,
-        shuffle=False,
+        valid_loader,
+        batch_size,
+        shuffle=True,
+        collate_fn=collate_fn
+    )
+    test_loader = DataloadDataset(
+        test_set
     )
     test_loader = DataLoader(
-        test_set,
-        batch_size=batch_size,
-        shuffle=False,
+        test_loader,
+        batch_size,
+        shuffle=True,
+        collate_fn=collate_fn
     )
     return train_loader, valid_loader, test_loader
 
@@ -113,7 +142,7 @@ def divide_train_val_test_split(dataset: PygGraphPropPredDataset, batch_size):
         return train_loader, valid_loader, test_loader
 
 
-def get_graph_classification_dataset(dataset: str, batch_size, dim=None, seed=42):
+def get_graph_classification_dataset(dataset: str, batch_size, args, seed=42):
     """Returns DataLoaders for the given dataset.
 
     Args:
@@ -133,15 +162,33 @@ def get_graph_classification_dataset(dataset: str, batch_size, dim=None, seed=42
     elif dataset == "ZINC":
         train_set, val_set, test_set = get_zinc()
         dataloaders = get_data_loaders(train_set, test_set, val_set, batch_size)
+        return  dataloaders, train_set.num_node_features, 1
     else:
-        dataset = tu_datasets(dataset)
+        dataset = tu_datasets(dataset, args)
         train_set, val_set, test_set = data_split(dataset, seed)
         dataloaders = get_data_loaders(train_set, test_set, val_set, batch_size)
 
     return dataloaders, dataset.num_features, dataset.num_classes
 
 
-def get_zinc():
+def ensure_float_features(dataset):
+    """
+    Converts all features in the dataset to float tensors.
+
+    Args:
+        dataset (torch_geometric.data.Dataset): The dataset to process.
+
+    Returns:
+        torch_geometric.data.Dataset: The dataset with float features.
+    """
+    for data in dataset:
+        if hasattr(data, 'x') and data.x is not None:
+            data.x = data.x.long()
+        if hasattr(data, 'edge_attr') and data.edge_attr is not None:
+            data.edge_attr = data.edge_attr.long()
+    return dataset
+
+def get_zinc(args):
     """Loads the ZINC dataset and returns the training, validation, and test sets.
 
     Returns:
@@ -151,10 +198,15 @@ def get_zinc():
     train_data = ZINC(path, subset=True, split="train")
     data_val = ZINC(path, subset=True, split="val")
     data_test = ZINC(path, subset=True, split="test")
+
+    if args.lifting != "diffLifting":
+        train_data =  lift_topology(train_data, args)
+        data_val = lift_topology(data_val, args)
+        data_test = lift_topology(data_test, args)
     return train_data, data_val, data_test
 
 
-def tu_datasets(name, no_feat_replacement='constant'):
+def tu_datasets(name,args, no_feat_replacement='constant'):
     """Loads a TUDataset and applies feature replacement if necessary.
 
     Args:
@@ -179,8 +231,24 @@ def tu_datasets(name, no_feat_replacement='constant'):
             dataset.transform = FilterConstant(10)
         elif no_feat_replacement == 'degree':
             T.OneHotDegree(max_degree)
+    if args.lifting != "diffLifting":
+        return lift_topology(dataset, args)
     return dataset
 
+
+def lift_topology(dataset, args):
+        data_list = []
+        max_dim = 0
+        for i, d in enumerate(dataset):
+            lift_fn = LIFTINGS[args.lifting]()
+            new_data = lift_fn(d)
+            for key, value in new_data.items():
+                if key.startswith("hodge_laplacian_"):
+                    setattr(d, key,normalize_matrix(value, int(key[-1])))
+                setattr(d, key,value)
+            data_list.append(d)
+        dataset.data, dataset.slices = dataset.collate(data_list)
+        return dataset
 
 def data_split(dataset, seed):
     """Splits a dataset into training, validation, and test sets using stratified shuffle split.
@@ -269,4 +337,51 @@ def choose_dataset(args):
     if args.dataset in NODES_PREDICTION_DATASET:
         return get_node_prediction_dataset(args.dataset)
     else:
-        return get_graph_classification_dataset(args.dataset, args.batch_size)
+        return get_graph_classification_dataset(args.dataset, args.batch_size, args)
+
+
+import torch_geometric
+
+
+class DataloadDataset(torch_geometric.data.Dataset):
+    """Custom dataset to return all the values added to the dataset object.
+
+    Parameters
+    ----------
+    data_lst : list[torch_geometric.data.Data]
+        List of torch_geometric.data.Data objects.
+    """
+
+    def __init__(self, data_lst):
+        super().__init__()
+        self.data_lst = data_lst
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({len(self.data_lst)})"
+
+    def get(self, idx):
+        """Get data object from data list.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the data object to get.
+
+        Returns
+        -------
+        tuple
+            Tuple containing a list of all the values for the data and the corresponding keys.
+        """
+        data = self.data_lst[idx]
+        keys = list(data.keys())
+        return ([data[key] for key in keys], keys)
+
+    def len(self):
+        """Return the length of the dataset.
+
+        Returns
+        -------
+        int
+            Length of the dataset.
+        """
+        return len(self.data_lst)

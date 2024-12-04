@@ -55,14 +55,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="ENZYMES",
-        choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG"],
+        default="NCI1",
+        choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
         "--lifting",
         type=str,
-        default="diff",
-        choices=["clique", "khop", "random_latent", "diffLifting", "IndependentSets", "NeighborhoodLifting", "DowkerLifting", "VietorisRipsLifting", "GraphInducedLifting",
+        default="SimplicialKHopLifting",
+        choices=["SimplicialCliqueLifting", "khop", "random_latent", "diffLifting", "IndependentSets", "NeighborhoodLifting", "DowkerLifting", "VietorisRipsLifting", "GraphInducedLifting",
                  "LineLifting", "EccentricityLifting", "DnDLifting", "NeighbourhoodComplexLifting"],
     )
     parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")

@@ -16,7 +16,7 @@ from tools.redout import PropagateSignalDown
 
 
 class TNN_KNN_MLP_G(nn.Module):
-    def __init__(self,in_channels, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, diff_lifting=True,rank=2):
+    def __init__(self,in_channels, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, diff_lifting=False,rank=2):
         super(TNN_KNN_MLP_G, self).__init__()
         self.gnn = gnn
         self.k = k
@@ -32,6 +32,7 @@ class TNN_KNN_MLP_G(nn.Module):
             nn.Linear(mlp_hidden_dim, 1),
         )
         self.classifier = nn.Linear(gnn.out_channels, num_classes)
+        self.diff_lifting = diff_lifting
         if diff_lifting:
             self.diff_lifting = DiffLifting(self.gnn, self.pool, self.mlp, self.k)
         self.tnn = TNN(

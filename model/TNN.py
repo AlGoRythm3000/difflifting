@@ -17,12 +17,12 @@ class TNN(nn.Module):
 
         self.pooling_fun = global_mean_pool
 
-    def forward(self, data):
+    def forward(self, batch):
         model_out = {}
-        x = self.base_model(data.x, data.x_1, data.x_2,
-                            normalize_matrix(data.hodge_laplacian_0, 0),
-                            normalize_matrix(data.hodge_laplacian_1, 1),
-                            normalize_matrix(data.hodge_laplacian_2, 2))
+        x = self.base_model(batch.x_0, batch.x_1, batch.x_2,
+                            batch.hodge_laplacian_0,
+                            batch.hodge_laplacian_1,
+                            batch.hodge_laplacian_2)
         model_out["x_0"] = x[0]
         model_out["x_1"] = x[1]
         model_out["x_2"] = x[2]
