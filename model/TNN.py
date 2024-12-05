@@ -6,9 +6,10 @@ from tools.normalize import normalize_matrix
 
 
 class TNN(nn.Module):
-    def __init__(self, model_type, in_channels, hidden_channels, out_channels, normalize_laplacians=True, **kwargs):
+    def __init__(self, model_type, in_channels, hidden_channels, out_channels, normalize_laplacians=True,device="cpu", **kwargs):
         super().__init__()
-        self.base_model = ModelFactory.create_model(model_type, in_channels, in_channels, in_channels, **kwargs)
+        self.base_model = ModelFactory.create_model(model_type, in_channels, in_channels, in_channels, device, **kwargs)
+
         print("Type of base_model:", type(self.base_model))
         self.linear = nn.Linear(hidden_channels, out_channels)
         self.pooling_fun = global_mean_pool

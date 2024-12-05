@@ -26,15 +26,15 @@ if __name__ == '__main__':
 
     args = parse_args()
     set_seed(args.seed)
-    data, num_features, num_classes = choose_dataset(args)
+    data, num_features, num_classes = choose_dataset(args, device)
     train_loader = data[0]
     val_loader = data[1]
     test_loader = data[2]
 
-    gnn = GNN(args.gnn, args.hidden_dim, args.depth, num_features, 32, args.global_pooling)
+    gnn = GNN(args.gnn, args.hidden_dim, args.depth, num_features, num_classes, args.global_pooling)
     diff_lifting = True if args.lifting == "diffLifting" else False
     model = TNN_KNN_MLP_G(num_features, gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes,
-                          k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling)
+                          k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling, device=device)
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 

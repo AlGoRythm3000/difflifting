@@ -138,7 +138,7 @@ def divide_train_val_test_split(dataset: PygGraphPropPredDataset, args):
         # return train_loader, valid_loader, test_loader
 
 
-def get_graph_classification_dataset(dataset: str, batch_size, args, seed=42):
+def get_graph_classification_dataset(dataset: str, batch_size, args, device, seed=42):
     """Returns DataLoaders for the given dataset.
 
     Args:
@@ -157,12 +157,12 @@ def get_graph_classification_dataset(dataset: str, batch_size, args, seed=42):
 
     elif dataset == "ZINC":
         train_set, val_set, test_set = get_zinc()
-        dataloaders = get_data_loaders(train_set, test_set, val_set, batch_size)
+        dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
         return  dataloaders, train_set.num_node_features, 1
     else:
         dataset = tu_datasets(dataset, args)
         train_set, val_set, test_set = data_split(dataset, seed)
-        dataloaders = get_data_loaders(train_set, test_set, val_set, batch_size)
+        dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
 
     return dataloaders, dataset.num_features, dataset.num_classes
 
@@ -320,7 +320,7 @@ def get_node_prediction_dataset(dataset, dim=None, seed=42):
 
     return data, dataset.num_features, dataset.num_classes
 
-def choose_dataset(args):
+def choose_dataset(args, device):
     """Chooses the appropriate dataset function based on the input data.
 
     Args:
@@ -333,7 +333,7 @@ def choose_dataset(args):
     if args.dataset in NODES_PREDICTION_DATASET:
         return get_node_prediction_dataset(args.dataset)
     else:
-        return get_graph_classification_dataset(args.dataset, args.batch_size, args)
+        return get_graph_classification_dataset(args.dataset, args.batch_size, args, device)
 
 
 import torch_geometric

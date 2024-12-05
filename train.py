@@ -18,7 +18,7 @@ def train(loader, model, loss_fn, optimizer, device):
 @torch.no_grad()
 def evaluate(model, loader, loss_fn, device, evaluator=None):
     model.eval()
-    for batch in loader:
+    for batch in tqdm(loader):
         batch = batch.to(device)
         out = model(batch)
         loss = loss_fn(out.squeeze().float(), batch.y.squeeze())

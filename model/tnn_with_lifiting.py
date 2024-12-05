@@ -38,7 +38,7 @@ class ProjectionSum(BaseTransform):
 
 
 class TNN_KNN_MLP(nn.Module):
-    def __init__(self, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2):
+    def __init__(self, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, device, k=2):
         super(TNN_KNN_MLP, self).__init__()
         self.gnn = gnn
         self.k = k
@@ -58,6 +58,7 @@ class TNN_KNN_MLP(nn.Module):
             in_channels=gnn.out_channels,
             hidden_channels=tnn_hidden_dim,
             out_channels=num_classes,
+            device=device
         )
         self.projection_sum = ProjectionSum()
 

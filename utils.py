@@ -50,20 +50,19 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
-    parser.add_argument("--gnn", type=str, default="gcn", choices=["gcn", "gin", "linear"])
+    parser.add_argument("--gnn", type=str, default="gin", choices=["gcn", "gin", "linear"])
     parser.add_argument("--tnn", type=str, default="SCN2", choices=["CWN", "SCN2", "CXN"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="ogbg-molhiv",
+        default="NCI1",
         choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
         "--lifting",
         type=str,
         default="diffLifting",
-        choices=["SimplicialCliqueLifting", "SimplicialKHopLifting", "random_latent", "diffLifting", "IndependentSets", "NeighborhoodLifting", "DowkerLifting", "VietorisRipsLifting", "GraphInducedLifting",
-                 "LineLifting", "EccentricityLifting", "DnDLifting", "NeighbourhoodComplexLifting"],
+        choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","diffLifting"],
     )
     parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight Decay.")
