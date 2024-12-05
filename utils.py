@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="gcn", choices=["gcn", "gin", "linear"])
-    parser.add_argument("--tnn", type=str, default="san", choices=["cwn", "scn", "sccnn"])
+    parser.add_argument("--tnn", type=str, default="SCN2", choices=["CWN", "SCN2", "CXN"])
     parser.add_argument(
         "--dataset",
         type=str,

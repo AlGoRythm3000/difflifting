@@ -20,10 +20,13 @@ def normalize_hodge_laplacians(dataset, args):
     return [Data(**data)]
 
 
-def normalize_matrix(matrix, dim=0):
+def normalize_matrix(matrix, dim=0, apply_normalization=True):
     """
     Normalize the input matrix.
     """
+    if not apply_normalization:
+        return matrix
+
     # Converter a matriz para formato denso no início
     matrix_dense = matrix.to_dense()
 

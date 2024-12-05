@@ -16,7 +16,7 @@ from tools.redout import PropagateSignalDown
 
 
 class TNN_KNN_MLP_G(nn.Module):
-    def __init__(self,in_channels, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum"):
+    def __init__(self,in_channels, gnn, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum",rank=2, tnn_type= "SCN2"):
         super(TNN_KNN_MLP_G, self).__init__()
         self.gnn = gnn
         self.k = k
@@ -36,6 +36,7 @@ class TNN_KNN_MLP_G(nn.Module):
         if diff_lifting:
             self.diff_lifting = DiffLifting(self.gnn, self.pool, self.mlp, self.k)
         self.tnn = TNN(
+            model_type=tnn_type,  # choose TNN model
             in_channels=in_channels,
             hidden_channels=tnn_hidden_dim,
             out_channels=num_classes,
