@@ -214,7 +214,7 @@ class Graph2SimplicialLifting(GraphLifting):
             )
         )
         # If new edges have been added during the lifting process, we discard the edge attributes
-        if self._data_has_edge_attr and simplicial_complex.shape[1] == (
+        if self.contains_edge_attr and simplicial_complex.shape[1] == (
             graph.number_of_edges()
         ):
             lifted_topology["x_1"] = torch.stack(

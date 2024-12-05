@@ -2,14 +2,14 @@ import os.path as osp
 
 import torch
 from ogb.graphproppred import PygGraphPropPredDataset
-from torch_geometric.data import DataLoader, Batch
+from torch_geometric.data import Batch
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch_geometric.utils import degree
 from torch_geometric.datasets import ZINC, TUDataset
 import torch_geometric.transforms as T
 from torch_geometric.datasets import KarateClub
 from torch_geometric.datasets import Planetoid
-
+from torch_geometric.loader import DataLoader
 from tools.collate import collate_fn
 from tools.lifting.clique_lifting import SimplicialCliqueLifting
 from tools.lifting.khop import SimplicialKHopLifting
@@ -81,8 +81,6 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     """
     from torch.utils.data import DataLoader
 
-    num_workers: int = 0,
-    pin_memory: bool = False,
     train_loader = DataloadDataset(
         train_set
     )
@@ -97,7 +95,7 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     )
     valid_loader = DataLoader(
         valid_loader,
-        batch_size,
+        len(val_set),
         shuffle=True,
         collate_fn=collate_fn
     )
@@ -106,14 +104,14 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     )
     test_loader = DataLoader(
         test_loader,
-        batch_size,
+        len(test_set),
         shuffle=True,
         collate_fn=collate_fn
     )
     return train_loader, valid_loader, test_loader
 
 
-def divide_train_val_test_split(dataset: PygGraphPropPredDataset, batch_size):
+def divide_train_val_test_split(dataset: PygGraphPropPredDataset, args):
     """Returns three DataLoaders for training, validation, and testing from the given dataset.
 
     Args:
@@ -125,21 +123,19 @@ def divide_train_val_test_split(dataset: PygGraphPropPredDataset, batch_size):
     """
     if dataset.name.startswith("ogbg"):
         split_idx = dataset.get_idx_split()
-        train_loader = DataLoader(
-            dataset[split_idx["train"]], batch_size=batch_size, shuffle=True
-        )
 
-        valid_loader = DataLoader(
-            dataset[split_idx["valid"]],
-            batch_size=split_idx["valid"].shape[0],
-            shuffle=False,
-        )
-        test_loader = DataLoader(
-            dataset[split_idx["test"]],
-            batch_size=split_idx["test"].shape[0],
-            shuffle=False,
-        )
-        return train_loader, valid_loader, test_loader
+        train_data = dataset[split_idx["train"]]
+        data_val = dataset[split_idx["valid"]]
+        data_test = dataset[split_idx["test"]]
+        if args.lifting != "diffLifting":
+            dataset =  lift_topology(dataset, args)
+            train_data = dataset[split_idx["train"]]
+            data_val = dataset[split_idx["valid"]]
+            data_test = dataset[split_idx["test"]]
+
+        return get_data_loaders(train_data, data_val, data_test, args.batch_size)
+
+        # return train_loader, valid_loader, test_loader
 
 
 def get_graph_classification_dataset(dataset: str, batch_size, args, seed=42):
@@ -156,7 +152,7 @@ def get_graph_classification_dataset(dataset: str, batch_size, args, seed=42):
     """
     if dataset.startswith("ogbg"):
         dataset = get_ogb_data(dataset)
-        train_loader, val_loader, test_loader = divide_train_val_test_split(dataset, batch_size)
+        train_loader, val_loader, test_loader = divide_train_val_test_split(dataset, args)
         dataloaders = (train_loader, val_loader, test_loader)
 
     elif dataset == "ZINC":

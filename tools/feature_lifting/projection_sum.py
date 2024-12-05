@@ -19,8 +19,9 @@ class ProjectionSum(BaseTransform):
             if f"x_{elem}" not in data:
                 idx_to_project = 0 if elem == "hyperedges" else int(elem) - 1
                 data["x_" + elem] = torch.matmul(
-                    abs(data["incidence_" + elem].t()), data[f"x_{idx_to_project}"]
+                    abs(data["incidence_" + elem].t()).float(), data[f"x_{idx_to_project}"].float()
                 )
+        data["x_0"] = data["x_0"].float()
         return data
 
     def forward(self, data):

@@ -69,13 +69,13 @@ class DiffLifting(torch.nn.Module):
 
         # Apply ProjectionSum to lift node features to edge features
         data_for_lifting = {
-            "x_0": x,  # Node features
+            "x_0": x.float(),  # Node features
             "incidence_1": node_edge_matrix,  # Node-to-edge incidence matrix
             "incidence_2": incidence_matrix, #edge_to-triangle
         }
         lifted_data = self.projection_sum(data_for_lifting)
 
-        data.x = x
+        data.x_0 = x.float()
         data.x_1 = lifted_data["x_1"]
         data.x_2 = lifted_data["x_2"]
 

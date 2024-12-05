@@ -28,14 +28,12 @@ if __name__ == '__main__':
     val_loader = data[1]
     test_loader = data[2]
 
-
-    # raise Exception
-    # num_classes = data.y.max().item() + 1
     gnn = GNN(args.gnn, args.hidden_dim, args.depth, num_features, 32, args.global_pooling)
     diff_lifting = True if args.lifting == "diffLifting" else False
-    model = TNN_KNN_MLP_G(num_features, gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes, k=3, diff_lifting=diff_lifting )
+    model = TNN_KNN_MLP_G(num_features, gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes,
+                          k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling)
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     criterion = nn.CrossEntropyLoss()
 
@@ -120,4 +118,6 @@ if __name__ == '__main__':
         "val_losses": tensor(val_losses),
     }
 
-    print(results)
+    torch.save(
+        results, f"{args.logdir}/{args.lifting}_{args.gnn}_{args.tnn}_{args.seed}.results"
+    )
