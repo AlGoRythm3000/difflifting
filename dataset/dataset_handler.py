@@ -14,6 +14,7 @@ from tools.collate import collate_fn
 from tools.lifting.clique_lifting import SimplicialCliqueLifting
 from tools.lifting.khop import SimplicialKHopLifting
 from tools.lifting.neighboorhood_complex import NeighborhoodComplexLifting
+from tools.lifting.cycle_lifting import CellCycleLifting
 from tools.normalize import normalize_matrix
 
 NODES_PREDICTION_DATASET = ["CORA", "CITESEER", "PUBMED", "KARATECLUB"]
@@ -21,6 +22,7 @@ LIFTINGS = {
     "SimplicialCliqueLifting":SimplicialCliqueLifting,
     "NeighborhoodComplexLifting": NeighborhoodComplexLifting,
     "SimplicialKHopLifting":SimplicialKHopLifting,
+    "CellCycleLifting": CellCycleLifting
 }
 
 class FilterConstant(object):

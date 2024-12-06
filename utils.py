@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
         "--lifting",
         type=str,
         default="diffLifting",
-        choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","diffLifting"],
+        choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting"],
     )
     parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight Decay.")
