@@ -3,37 +3,12 @@ import torch_geometric.utils
 
 from dataset.dataset_handler import remove_duplicated_edges
 from preprocessing.preprocessing import remove_duplicate_edges
-from torch_geometric.transforms import BaseTransform, to_sparse_tensor
+
 from torch_geometric.data import Data, Batch
 
+from tools.feature_lifting.projection_sum import ProjectionSum
 
 
-class ProjectionSum(BaseTransform):
-    r"""Lift r-cell features to r+1-cells by projection."""
-
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}()"
-
-    def lift_features(self, data):
-        r"""Project r-cell features of a graph to r+1-cell structures."""
-        keys = sorted(
-            [key.split("_")[1] for key in data if ("incidence" in key and "-" not in key)]
-        )
-        for elem in keys:
-            if f"x_{elem}" not in data:
-                idx_to_project = 0 if elem == "hyperedges" else int(elem) - 1
-                data["x_" + elem] = torch.matmul(
-                    abs(data["incidence_" + elem].t()), data[f"x_{idx_to_project}"]
-                )
-        return data
-
-    def forward(self, data):
-        r"""Apply the lifting to the input data."""
-        data = self.lift_features(data)
-        return data
 class DiffLifting(torch.nn.Module):
 
     def __init__(self, gnn, pool, mlp, k):
@@ -46,8 +21,9 @@ class DiffLifting(torch.nn.Module):
         self.projection_sum = ProjectionSum()
 
     def forward(self, data):
+        x, edge_index = data.x.float(), data.edge_index
         edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
-        embeddings = self.gnn(data.x, data.edge_index)
+        embeddings = self.gnn(x, edge_index)
         distances = torch.cdist(embeddings, embeddings)
         knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
         num_edges = edge_index_undirected.size(1)
@@ -85,7 +61,7 @@ class DiffLifting(torch.nn.Module):
                         incidence_matrix_temp[edge_idx, i] = straight_through_sample
 
         incidence_matrix = incidence_matrix_temp.clone().requires_grad_()
-
+        incidence_matrix = incidence_matrix
         node_edge_matrix = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
         for idx, edge in enumerate(edge_index_undirected.T):
             node_edge_matrix[edge[0], idx] = 1
@@ -93,13 +69,13 @@ class DiffLifting(torch.nn.Module):
 
         # Apply ProjectionSum to lift node features to edge features
         data_for_lifting = {
-            "x_0": data.x,  # Node features
+            "x_0": x.float(),  # Node features
             "incidence_1": node_edge_matrix,  # Node-to-edge incidence matrix
             "incidence_2": incidence_matrix, #edge_to-triangle
         }
         lifted_data = self.projection_sum(data_for_lifting)
 
-
+        data.x_0 = x.float()
         data.x_1 = lifted_data["x_1"]
         data.x_2 = lifted_data["x_2"]
 

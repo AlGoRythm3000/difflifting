@@ -4,7 +4,7 @@ import torch
 from torch import tensor
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+from ogb.graphproppred import Evaluator
 from model.tnn_with_lifting_graph_classific import TNN_KNN_MLP_G
 from train import train, evaluate
 from dataset.dataset_handler import choose_dataset
@@ -26,19 +26,20 @@ if __name__ == '__main__':
 
     args = parse_args()
     set_seed(args.seed)
-    data, num_features, num_classes = choose_dataset(args)
+    data, num_features, num_classes = choose_dataset(args, device)
     train_loader = data[0]
     val_loader = data[1]
     test_loader = data[2]
 
-
-    # raise Exception
-    # num_classes = data.y.max().item() + 1
-    gnn = GNN(in_channels=num_features, hidden_channels=16, out_channels=8)
-    model = TNN_KNN_MLP_G(num_features, gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes, k=3, tnn_type=args.tnn)
+    gnn = GNN(args.gnn, args.hidden_dim, args.depth, num_features, num_classes, args.global_pooling)
+    diff_lifting = True if args.lifting == "diffLifting" else False
+    model = TNN_KNN_MLP_G(num_features, gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes,
+                          k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling, device=device)
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
     criterion = nn.CrossEntropyLoss()
+
 
 
     def train_eval(model, train_loader, val_loader, test_loader, loss_fn, optimizer, evaluator, device):
@@ -68,7 +69,11 @@ if __name__ == '__main__':
         patience=args.lr_decay_patience,
     )
     loss_fn = torch.nn.CrossEntropyLoss()
+    if args.dataset == "ZINC":
+        loss_fn = torch.nn.L1Loss(reduction='mean')
     evaluator = None
+    if args.dataset == "ogbg-molhiv":
+        evaluator = Evaluator(args.dataset)
     for epoch in range(1, args.max_epochs + 1):
         train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
             model,
@@ -116,4 +121,6 @@ if __name__ == '__main__':
         "val_losses": tensor(val_losses),
     }
 
-    print(results)
+    torch.save(
+        results, f"{args.logdir}/{args.lifting}_{args.gnn}_{args.tnn}_{args.seed}.results"
+    )

@@ -65,7 +65,7 @@ class AbstractZeroCellReadOut(torch.nn.Module):
         model_out = self.forward(model_out, batch)
 
         model_out["logits"] = self.compute_logits(
-            model_out["x_0"], batch
+            model_out["x_0"], batch["batch_0"]
         )
 
         return model_out
@@ -86,7 +86,7 @@ class AbstractZeroCellReadOut(torch.nn.Module):
             Logits tensor.
         """
         if self.task_level == "graph":
-            x = scatter(x, batch.batch, dim=0, reduce=self.pooling_type)
+            x = scatter(x, batch, dim=0, reduce=self.pooling_type)
 
         return self.linear(x)
 
