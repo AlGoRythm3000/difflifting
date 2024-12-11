@@ -12,7 +12,7 @@ from model.GNN import GNN
 
 from utils import parse_args, set_seed
 import torch.nn as nn
-
+import os
 train_losses = []
 test_accuracies = []
 train_accuracies = []
@@ -120,7 +120,8 @@ if __name__ == '__main__':
         "val_accuracies": tensor(val_accuracies),
         "val_losses": tensor(val_losses),
     }
-
+    if not os.path.exists(args.logdir):
+        os.makedirs(args.logdir)
     torch.save(
         results, f"{args.logdir}/{args.lifting}_{args.gnn}_{args.tnn}_{args.seed}.results"
     )
