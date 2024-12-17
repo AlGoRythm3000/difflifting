@@ -1,20 +1,30 @@
 import torch
+from topomodelx.nn.simplicial.scn2 import SCN2
 from torch import nn
 from torch_geometric.nn import global_mean_pool
 from model.models.model_factory import ModelFactory
 from tools.normalize import normalize_matrix
+from topomodelx.nn.cell.cwn import CWN
+from topomodelx.nn.cell.ccxn import CCXN
 
 
 class TNN(nn.Module):
     def __init__(self, model_type, in_channels, hidden_channels, out_channels, normalize_laplacians=True,device="cpu", **kwargs):
         super().__init__()
-        self.base_model = ModelFactory.create_model(model_type, in_channels, in_channels, in_channels, device, **kwargs)
+        self.model_type = model_type
+        if self.model_type == "SCN2":
+            self.base_model = SCN2(in_channels, in_channels, in_channels).to(device)
+        elif self.model_type == "CWN":
+            self.base_model = CWN(in_channels, in_channels, in_channels, hidden_channels, **kwargs).to(device)
+        elif self.model_type == "CXN":
+            self.base_model = CCXN(in_channels, in_channels, in_channels, hidden_channels, device, **kwargs).to(device)
+
 
         print("Type of base_model:", type(self.base_model))
         self.linear = nn.Linear(hidden_channels, out_channels)
         self.pooling_fun = global_mean_pool
         self.normalize_laplacians = normalize_laplacians
-        self.model_type = model_type
+
 
     def forward(self, data):
         model_out = {}

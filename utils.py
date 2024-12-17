@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="NCI1",
+        default="PROTEINS",
         choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight Decay.")
 
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size.")
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
     )
