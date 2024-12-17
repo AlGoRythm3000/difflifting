@@ -73,27 +73,19 @@ class TNN_KNN_MLP_G(nn.Module):
             x, edge_index = data.x.float(), data.edge_index
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
             embeddings = self.gnn(x, edge_index)
-            distances = torch.cdist(embeddings, embeddings)
-            knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
-            num_edges = edge_index_undirected.size(1)
-            # max_triangles = embeddings.size(0)
+            knn_indices = torch.zeros(embeddings.shape[0], self.k)
+            for i in range(vertex_slice[:-1].shape[0]):
+                distances = torch.cdist(embeddings[vertex_slice[i]: vertex_slice[i+1], :], embeddings[vertex_slice[i]: vertex_slice[i+1], :])
+                knn_indices[vertex_slice[i]: vertex_slice[i+1]] = vertex_slice[i] + torch.topk(-distances, self.k, dim=-1)[1]
 
-            edge_map = {tuple(sorted(edge)): idx for idx, edge in enumerate(edge_index_undirected.T.tolist())}
+            pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
-            num_nodes = embeddings.size(0)
-            knn_set = torch.cat((
-                embeddings[knn_indices],  # Shape: [num_nodes, k, emb_dim]
-                embeddings.unsqueeze(1)  # Shape: [num_nodes, 1, emb_dim]
-            ), dim=1)  # Shape: [num_nodes, k+1, emb_dim]
-
-            # 2. Realize o pooling em batch
-            pooled_embeddings = self.pool(knn_set, batch=None)
-            pooled_embeddings = pooled_embeddings.view(num_nodes, -1)  # Shape: [num_nodes, emb_dim]
-
-            # 3. Calcule as probabilidades de inclusão e as amostras
             include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
             inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
             straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
+
+
+
 
             # 4. Atualize os embeddings selecionados vetorizadamente
             # selected_embeddings = (
@@ -106,7 +98,7 @@ class TNN_KNN_MLP_G(nn.Module):
             selected_knn_indices = knn_indices[triangle_mask]  # Nós incluídos
             straight_through_indices = list(torch.where(straight_through_samples==1)[0])
 
-            incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], num_nodes),
+            incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], embeddings.shape[0]),
                                               device=data.x.device, requires_grad=True)
             incidence_matrix_2[knn_indices] = straight_through_samples
 
