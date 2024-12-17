@@ -75,7 +75,10 @@ class TNN_KNN_MLP_G(nn.Module):
             embeddings = self.gnn(x, edge_index)
             distances = torch.cdist(embeddings, embeddings)
             knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
+            num_edges = edge_index_undirected.size(1)
+            # max_triangles = embeddings.size(0)
 
+            edge_map = {tuple(sorted(edge)): idx for idx, edge in enumerate(edge_index_undirected.T.tolist())}
 
             num_nodes = embeddings.size(0)
             knn_set = torch.cat((
@@ -83,44 +86,50 @@ class TNN_KNN_MLP_G(nn.Module):
                 embeddings.unsqueeze(1)  # Shape: [num_nodes, 1, emb_dim]
             ), dim=1)  # Shape: [num_nodes, k+1, emb_dim]
 
-            # 2. Realize pooling in batch
+            # 2. Realize o pooling em batch
             pooled_embeddings = self.pool(knn_set, batch=None)
             pooled_embeddings = pooled_embeddings.view(num_nodes, -1)  # Shape: [num_nodes, emb_dim]
 
-            # 3. Calculate the probability of inclusion samples
+            # 3. Calcule as probabilidades de inclusão e as amostras
             include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
             inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
             straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
 
+            # 4. Atualize os embeddings selecionados vetorizadamente
+            # selected_embeddings = (
+            #         straight_through_samples * pooled_embeddings
+            #         + (1 - straight_through_samples) * embeddings
+            # )
 
-
-            # 5. Update matrix of triangles (or cells)
+            # 5. Atualize a matriz de triângulos vetorizada
             triangle_mask = straight_through_samples.view(-1) == 1.0
-            selected_knn_indices = knn_indices[triangle_mask]  # Included Nodes
+            selected_knn_indices = knn_indices[triangle_mask]  # Nós incluídos
+            straight_through_indices = list(torch.where(straight_through_samples==1)[0])
 
-            incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], selected_knn_indices.shape[0]))
+            incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], num_nodes),
+                                              device=data.x.device, requires_grad=True)
+            incidence_matrix_2[knn_indices] = straight_through_samples
 
-            incidence_matrix_1 = torch.zeros((data.x.shape[0], edge_index_undirected.shape[1]), device=data.x.device)
-
-
-            edges_sorted = torch.sort(edge_index_undirected.T, dim=1)[0]  # Shape: [num_edges, 2]
-            triangles_sorted = torch.sort(selected_knn_indices, dim=1)[0]  # Shape: [num_triangles, 3]
-            for i in range(triangles_sorted.shape[0]):
-                for j in range(edges_sorted.shape[0]):
-                    if set(edges_sorted[j]).issubset(set(triangles_sorted)):
-                        incidence_matrix_2[j,i] = 1.0
-            # # Expand edges for comparison
+            # incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], selected_knn_indices.shape[0]),
+            #                                  device=data.x.device)
+            #
+            # incidence_matrix_1 = torch.zeros((data.x.shape[0], edge_index_undirected.shape[1]), device=data.x.device)
+            #
+            # edges_sorted = torch.sort(edge_index_undirected.T, dim=1)[0]  # Shape: [num_edges, 2]
+            # triangles_sorted = torch.sort(selected_knn_indices, dim=1)[0]  # Shape: [num_triangles, 3]
+            #
+            # # Expandir as dimensões para comparação
             # edges_expanded = edges_sorted.unsqueeze(1)  # Shape: [num_edges, 1, 2]
             # triangles_expanded = triangles_sorted.unsqueeze(0)  # Shape: [1, num_triangles, 3]
             #
-            # # Verify if edge in triangle
+            # # Verificar se cada nó da aresta está no triângulo
             # matches = (edges_expanded.unsqueeze(-1) == triangles_expanded.unsqueeze(
             #     -2))  # Shape: [num_edges, num_triangles, 2, 3]
             #
             # # Verificar se ambos os nós da aresta estão presentes no triângulo
             # edge_in_triangle = matches.any(dim=-1).all(dim=-1)  # Shape: [num_edges, num_triangles]
-
-            # Converter para float para formar a matriz de incidência
+            #
+            # # Converter para float para formar a matriz de incidência
             # incidence_matrix_2 = edge_in_triangle.float()  # Shape: [num_edges, num_triangles]
 
             for idx, edge in enumerate(edge_index_undirected.T):
