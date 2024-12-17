@@ -5,10 +5,11 @@ from tqdm import tqdm
 def train(loader, model, loss_fn, optimizer, device):
     model.train()
     train_losses = []
-    for batch in tqdm(loader):
+    for batch in loader:
         batch = batch.to(device)
         optimizer.zero_grad()
         out = model(batch)
+
         loss = loss_fn(out.squeeze().float(), batch.y.squeeze())
         loss.backward()
         optimizer.step()
@@ -18,7 +19,7 @@ def train(loader, model, loss_fn, optimizer, device):
 @torch.no_grad()
 def evaluate(model, loader, loss_fn, device, evaluator=None):
     model.eval()
-    for batch in tqdm(loader):
+    for batch in loader:
         batch = batch.to(device)
         out = model(batch)
         loss = loss_fn(out.squeeze().float(), batch.y.squeeze())

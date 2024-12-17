@@ -158,7 +158,7 @@ def get_graph_classification_dataset(dataset: str, batch_size, args, device, see
         dataloaders = (train_loader, val_loader, test_loader)
 
     elif dataset == "ZINC":
-        train_set, val_set, test_set = get_zinc()
+        train_set, val_set, test_set = get_zinc(args)
         dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
         return  dataloaders, train_set.num_node_features, 1
     else:
