@@ -31,9 +31,9 @@ if __name__ == '__main__':
     val_loader = data[1]
     test_loader = data[2]
 
-    gnn = GNN(args.gnn, args.hidden_dim, args.depth, num_features, num_classes, args.global_pooling)
+
     diff_lifting = True if args.lifting == "diffLifting" else False
-    model = TNN_KNN_MLP_G(num_features, gnn, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes,
+    model = TNN_KNN_MLP_G(num_features, args, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes,
                           k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling, device=device)
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -44,7 +44,6 @@ if __name__ == '__main__':
 
     def train_eval(model, train_loader, val_loader, test_loader, loss_fn, optimizer, evaluator, device):
         train_loss = train(train_loader, model, loss_fn, optimizer, device)
-
         val_loss, val_acc = evaluate(model, val_loader, loss_fn, device, evaluator)
         test_loss, test_acc = evaluate(model, test_loader, loss_fn, device, evaluator)
         return train_loss, val_loss, val_acc, test_loss, test_acc
@@ -74,7 +73,7 @@ if __name__ == '__main__':
     evaluator = None
     if args.dataset == "ogbg-molhiv":
         evaluator = Evaluator(args.dataset)
-    for epoch in range(1, args.max_epochs + 1):
+    for epoch in range(1, args.max_epochs):
         train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
             model,
             train_loader,
@@ -85,7 +84,8 @@ if __name__ == '__main__':
             evaluator,
             device
         )
-
+        # for name, param in model.named_parameters():
+        #     print(f"{name} gradient: {param.grad}")
         test_accuracies.append(test_acc)
         test_losses.append(test_loss)  # test losses
 

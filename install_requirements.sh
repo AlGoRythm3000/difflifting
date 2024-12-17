@@ -15,9 +15,9 @@ source "$venvPath/bin/activate"
 
 # Lista de bibliotecas a serem instaladas
 bibliotecas=(
-    "torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121"
+    "torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cpu"
     "torch_geometric"
-    "pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu121.html"
+    "pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0++cpu.html"
     "git+https://github.com/pyt-team/TopoNetX.git"
     "git+https://github.com/pyt-team/TopoModelX.git"
     "networkx"
@@ -27,7 +27,7 @@ bibliotecas=(
 # Instala as bibliotecas
 for biblioteca in "${bibliotecas[@]}"; do
     echo "Instalando $biblioteca no ambiente virtual..."
-    pip install $biblioteca
+    pip3 install $biblioteca
 done
 
 echo "Instalação completa!"
