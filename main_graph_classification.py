@@ -73,7 +73,7 @@ if __name__ == '__main__':
     evaluator = None
     if args.dataset == "ogbg-molhiv":
         evaluator = Evaluator(args.dataset)
-    for epoch in range(1, 2+ 1):
+    for epoch in range(1, args.max_epochs):
         train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
             model,
             train_loader,
