@@ -7,6 +7,8 @@ from torch_geometric.data import Batch
 from torch_geometric.nn import global_mean_pool
 import torch.nn.functional as F
 
+import torch_geometric
+
 from layers.diff_lifting import DiffLifting
 from model.GNN import GNN
 from model.TNN import TNN
@@ -99,11 +101,11 @@ class TNN_KNN_MLP_G(nn.Module):
                 incidence_matrix_1[edge[0], idx] = 1
                 incidence_matrix_1[edge[1], idx] = 1
             
-            print(straight_through_samples.repeat)
+            #print(straight_through_samples.repeat)
 
-            print(straight_through_samples.flatten())
+            #print(straight_through_samples.flatten())
 
-            print(knn_indices.flatten())
+            #print(knn_indices.flatten())
 
             # node_triangle_matrix = torch.zeros((data.x.size(0), data.x.size(0)), device=data.x.device)
 
@@ -119,37 +121,33 @@ class TNN_KNN_MLP_G(nn.Module):
                 (num_nodes, num_nodes), device=data.x.device
             )
             print("shape:", torch.arange(0,num_nodes).repeat(3,1).T.flatten())
+
+            print("cat:" , torch.cat((knn_indices.flatten().unsqueeze(1), torch.arange(0,num_nodes).repeat(3,1).T.flatten().unsqueeze(1)),axis=1).shape)
+
             mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
-            node_triangle_matrix= mask.scatter_(2, torch.cat((knn_indices.flatten(), torch.arange(0,num_nodes).repeat(3,1).T.flatten())), 1)
+            # node_triangle_matrix= mask.scatter_(1, torch.cat((knn_indices.flatten().unsqueeze(1), torch.arange(0,num_nodes).repeat(3,1).T.flatten().unsqueeze(1)),axis=1), straight_through_samples)
+
+
+            node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
+
+            #print("node_triangle: ", node_triangle_matrix)
+
+            #print("node_triangle sum: ", node_triangle_matrix.sum(1))
+
+            #print("grad: ", node_triangle_matrix.grad_fn)
+
             #mask.scatter_(0, knn_indices, straight_through_samples)
             
             #incidence_matrix_temp_2[knn_indices] = straight_through_samples
 
             #incidence_matrix_2 = incidence_matrix_temp_2.clone().requires_grad_()
             incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
-            
 
-            # incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], selected_knn_indices.shape[0]),
-            #                                  device=data.x.device)
-            #
-            # incidence_matrix_1 = torch.zeros((data.x.shape[0], edge_index_undirected.shape[1]), device=data.x.device)
-            #
-            # edges_sorted = torch.sort(edge_index_undirected.T, dim=1)[0]  # Shape: [num_edges, 2]
-            # triangles_sorted = torch.sort(selected_knn_indices, dim=1)[0]  # Shape: [num_triangles, 3]
-            #
-            # # Expandir as dimensões para comparação
-            # edges_expanded = edges_sorted.unsqueeze(1)  # Shape: [num_edges, 1, 2]
-            # triangles_expanded = triangles_sorted.unsqueeze(0)  # Shape: [1, num_triangles, 3]
-            #
-            # # Verificar se cada nó da aresta está no triângulo
-            # matches = (edges_expanded.unsqueeze(-1) == triangles_expanded.unsqueeze(
-            #     -2))  # Shape: [num_edges, num_triangles, 2, 3]
-            #
-            # # Verificar se ambos os nós da aresta estão presentes no triângulo
-            # edge_in_triangle = matches.any(dim=-1).all(dim=-1)  # Shape: [num_edges, num_triangles]
-            #
-            # # Converter para float para formar a matriz de incidência
-            # incidence_matrix_2 = edge_in_triangle.float()  # Shape: [num_edges, num_triangles]
+            incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
+            
+            #print("incidence_matrix_2: ", incidence_matrix_2)
+
+            #print("incidence_matrix_2 sum: ", incidence_matrix_2.sum(1))
 
             
 
