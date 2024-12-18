@@ -81,7 +81,7 @@ class TNN_KNN_MLP_G(nn.Module):
             mask_knn = mask_knn @ mask_knn.T
 
             distances = torch.cdist(embeddings, embeddings) # Find if there is cdist without sqrt
-            
+
             distances= mask_knn * distances + (1-mask_knn)*1e7
             #print(distances.shape)
             knn_indices = torch.topk(-distances, self.k, dim=-1)[1] 
@@ -120,9 +120,7 @@ class TNN_KNN_MLP_G(nn.Module):
             #                                   device=data.x.device, requires_grad=True)
             num_nodes= data.x.size(0)
 
-            incidence_matrix_temp_2 = torch.zeros(
-                (num_nodes, num_nodes), device=data.x.device
-            )
+         
             print("shape:", torch.arange(0,num_nodes).repeat(3,1).T.flatten())
 
             print("cat:" , torch.cat((knn_indices.flatten().unsqueeze(1), torch.arange(0,num_nodes).repeat(3,1).T.flatten().unsqueeze(1)),axis=1).shape)

@@ -123,5 +123,5 @@ if __name__ == '__main__':
     if not os.path.exists(args.logdir):
         os.makedirs(args.logdir)
     torch.save(
-        results, f"{args.logdir}/{args.lifting}_{args.gnn}_{args.tnn}_{args.seed}.results"
+        results, f"{args.logdir}/{args.dataset}_{args.lifting}_{args.gnn}_{args.tnn}_{args.seed}.results"
     )
