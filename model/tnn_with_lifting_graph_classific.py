@@ -78,7 +78,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
             mask_knn= torch.nn.functional.one_hot(data.batch_0,num_classes=vertex_slice.shape[0]-1)
 
-            mask_knn = mask_knn @ mask_knn.T
+            mask_knn = mask_knn.float() @ mask_knn.T.float()
 
             distances = torch.cdist(embeddings, embeddings) # Find if there is cdist without sqrt
 
