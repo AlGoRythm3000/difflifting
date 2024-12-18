@@ -75,10 +75,13 @@ class TNN_KNN_MLP_G(nn.Module):
             x, edge_index = data.x.float(), data.edge_index
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
             embeddings = self.gnn(x, edge_index)
-            knn_indices = torch.zeros(embeddings.shape[0], self.k)
+
             mask_knn= torch.nn.functional.one_hot(data.batch_0,num_classes=vertex_slice.shape[0]-1)
+
             mask_knn = mask_knn @ mask_knn.T
+
             distances = torch.cdist(embeddings, embeddings) # Find if there is cdist without sqrt
+            
             distances= mask_knn * distances + (1-mask_knn)*1e7
             #print(distances.shape)
             knn_indices = torch.topk(-distances, self.k, dim=-1)[1] 
