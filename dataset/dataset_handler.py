@@ -97,7 +97,7 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     )
     valid_loader = DataLoader(
         valid_loader,
-        len(val_set),
+        batch_size,
         shuffle=True,
         collate_fn=collate_fn
     )
@@ -106,7 +106,7 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     )
     test_loader = DataLoader(
         test_loader,
-        len(test_set),
+        batch_size,
         shuffle=True,
         collate_fn=collate_fn
     )

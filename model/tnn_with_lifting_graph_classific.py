@@ -121,9 +121,6 @@ class TNN_KNN_MLP_G(nn.Module):
             num_nodes= data.x.size(0)
 
          
-            print("shape:", torch.arange(0,num_nodes).repeat(3,1).T.flatten())
-
-            print("cat:" , torch.cat((knn_indices.flatten().unsqueeze(1), torch.arange(0,num_nodes).repeat(3,1).T.flatten().unsqueeze(1)),axis=1).shape)
 
             mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
             # node_triangle_matrix= mask.scatter_(1, torch.cat((knn_indices.flatten().unsqueeze(1), torch.arange(0,num_nodes).repeat(3,1).T.flatten().unsqueeze(1)),axis=1), straight_through_samples)
