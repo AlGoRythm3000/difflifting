@@ -74,33 +74,60 @@ class TNN_KNN_MLP_G(nn.Module):
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
             embeddings = self.gnn(x, edge_index)
             knn_indices = torch.zeros(embeddings.shape[0], self.k)
-            for i in range(vertex_slice[:-1].shape[0]):
-                distances = torch.cdist(embeddings[vertex_slice[i]: vertex_slice[i+1], :], embeddings[vertex_slice[i]: vertex_slice[i+1], :])
-                knn_indices[vertex_slice[i]: vertex_slice[i+1]] = vertex_slice[i] + torch.topk(-distances, self.k, dim=-1)[1]
+            mask_knn= torch.nn.functional.one_hot(data.batch_0,num_classes=vertex_slice.shape[0]-1)
+            mask_knn = mask_knn @ mask_knn.T
+            distances = torch.cdist(embeddings, embeddings) # Find if there is cdist without sqrt
+            distances= mask_knn * distances + (1-mask_knn)*1e7
+            #print(distances.shape)
+            knn_indices = torch.topk(-distances, self.k, dim=-1)[1] 
+            #print(knn_indices[:,0:3])
+            # for i in range(vertex_slice[:-1].shape[0]):
+            #     distances = torch.cdist(embeddings[vertex_slice[i]: vertex_slice[i+1], :], embeddings[vertex_slice[i]: vertex_slice[i+1], :])
+            #     knn_indices[vertex_slice[i]: vertex_slice[i+1]] = vertex_slice[i] + torch.topk(-distances, self.k, dim=-1)[1]
 
             pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
             include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
             inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
             straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
+            
+            num_edges = edge_index_undirected.size(1)
 
+            incidence_matrix_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
 
+            for idx, edge in enumerate(edge_index_undirected.T):
+                incidence_matrix_1[edge[0], idx] = 1
+                incidence_matrix_1[edge[1], idx] = 1
+            
+            print(straight_through_samples.repeat)
 
+            print(straight_through_samples.flatten())
 
-            # 4. Atualize os embeddings selecionados vetorizadamente
-            # selected_embeddings = (
-            #         straight_through_samples * pooled_embeddings
-            #         + (1 - straight_through_samples) * embeddings
-            # )
+            print(knn_indices.flatten())
 
-            # 5. Atualize a matriz de triângulos vetorizada
-            triangle_mask = straight_through_samples.view(-1) == 1.0
-            selected_knn_indices = knn_indices[triangle_mask]  # Nós incluídos
-            straight_through_indices = list(torch.where(straight_through_samples==1)[0])
+            # node_triangle_matrix = torch.zeros((data.x.size(0), data.x.size(0)), device=data.x.device)
 
-            incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], embeddings.shape[0]),
-                                              device=data.x.device, requires_grad=True)
-            incidence_matrix_2[knn_indices] = straight_through_samples
+            # triangle_mask = straight_through_samples.view(-1) == 1.0
+            # selected_knn_indices = knn_indices[triangle_mask]  # Nós incluídos
+            # straight_through_indices = list(torch.where(straight_through_samples==1)[0])
+
+            # incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], embeddings.shape[0]),
+            #                                   device=data.x.device, requires_grad=True)
+            num_nodes= data.x.size(0)
+
+            incidence_matrix_temp_2 = torch.zeros(
+                (num_nodes, num_nodes), device=data.x.device
+            )
+            print("shape:", torch.arange(0,num_nodes).repeat(3,1).T.flatten())
+            mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
+            node_triangle_matrix= mask.scatter_(2, torch.cat((knn_indices.flatten(), torch.arange(0,num_nodes).repeat(3,1).T.flatten())), 1)
+            #mask.scatter_(0, knn_indices, straight_through_samples)
+            
+            #incidence_matrix_temp_2[knn_indices] = straight_through_samples
+
+            #incidence_matrix_2 = incidence_matrix_temp_2.clone().requires_grad_()
+            incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
+            
 
             # incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], selected_knn_indices.shape[0]),
             #                                  device=data.x.device)
@@ -124,9 +151,7 @@ class TNN_KNN_MLP_G(nn.Module):
             # # Converter para float para formar a matriz de incidência
             # incidence_matrix_2 = edge_in_triangle.float()  # Shape: [num_edges, num_triangles]
 
-            for idx, edge in enumerate(edge_index_undirected.T):
-                incidence_matrix_1[edge[0], idx] = 1
-                incidence_matrix_1[edge[1], idx] = 1
+            
 
             # Apply ProjectionSum to lift node features to edge features
             data_for_lifting = {
