@@ -5,6 +5,8 @@ from torch import tensor
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from ogb.graphproppred import Evaluator
+from torchinfo import summary
+
 from model.tnn_with_lifting_graph_classific import TNN_KNN_MLP_G
 from train import train, evaluate
 from dataset.dataset_handler import choose_dataset
@@ -19,12 +21,15 @@ train_accuracies = []
 triangle_counts = []  # Add this list to store triangle counts
 
 torch.autograd.set_detect_anomaly(True)
-
-
+import tempfile
+# import mlflow.pytorch
 if __name__ == '__main__':
+
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     args = parse_args()
+    # mlflow.set_experiment(f"/{args.tnn}_{args.lifting}_{args.seed}_{args.dataset}")
     set_seed(args.seed)
     data, num_features, num_classes = choose_dataset(args, device)
     train_loader = data[0]
@@ -33,7 +38,7 @@ if __name__ == '__main__':
 
 
     diff_lifting = True if args.lifting == "diffLifting" else False
-    model = TNN_KNN_MLP_G(num_features, args, mlp_hidden_dim=16, tnn_hidden_dim=16, num_classes=num_classes,
+    model = TNN_KNN_MLP_G(num_features, args, mlp_hidden_dim=args.hidden_dim, tnn_hidden_dim=args.hidden_dim, num_classes=num_classes,
                           k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling, device=device)
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -73,6 +78,16 @@ if __name__ == '__main__':
     evaluator = None
     if args.dataset == "ogbg-molhiv":
         evaluator = Evaluator(args.dataset)
+
+    # with mlflow.start_run() as run:
+    #
+    #     mlflow.log_params(args.__dict__,)
+    #
+    #
+    #     mlflow.pytorch.log_model(model, 'models')
+    #     with open("model_summary.txt", "w", encoding="utf-8") as f:
+    #         f.write(str(summary(model, depth=5, verbose=2)))
+    #     mlflow.log_artifact("model_summary.txt")
     for epoch in range(1, args.max_epochs):
         train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
             model,
@@ -84,6 +99,11 @@ if __name__ == '__main__':
             evaluator,
             device
         )
+        # mlflow.log_metric('train loss',torch.tensor(train_loss).mean().item(), step=epoch)
+        # mlflow.log_metric('val loss', val_loss.item(), step=epoch)
+        # mlflow.log_metric('test loss', test_loss.item(), step=epoch)
+        # mlflow.log_metric('test acc', test_acc.item(), step=epoch)
+        # mlflow.pytorch.autolog()
         # for name, param in model.named_parameters():
         #     print(f"{name} gradient: {param.grad}")
         test_accuracies.append(test_acc)

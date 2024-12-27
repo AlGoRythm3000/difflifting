@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import torch_geometric
 
 from layers.diff_lifting import DiffLifting
+from layers.encoders.all_cell_features_encoders import AllCellFeatureEncoder
 from model.GNN import GNN
 from model.TNN import TNN
 from torch_geometric.transforms import BaseTransform
@@ -37,6 +38,7 @@ class TNN_KNN_MLP_G(nn.Module):
         self.k = k
         self.triangle_count = 0  # Add this to track triangles
         self.diff_lifting = diff_lifting
+        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=mlp_hidden_dim, proj_dropout=0.5)
         if diff_lifting:
             self.gnn = GNN(in_channels, args.hidden_dim, mlp_hidden_dim)
             self.pool = global_mean_pool
@@ -54,7 +56,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
-            in_channels=in_channels,
+            in_channels=mlp_hidden_dim,
             hidden_channels=tnn_hidden_dim,
             out_channels=num_classes,
             device=device
@@ -63,7 +65,7 @@ class TNN_KNN_MLP_G(nn.Module):
         self.readout = PropagateSignalDown(**{
             "readout_name": "PropagateSignalDownLinear",
             "num_cell_dimensions": 3,
-            "hidden_dim": in_channels,
+            "hidden_dim": mlp_hidden_dim,
             "out_channels": num_classes,
             "task_level": "graph",
             "pooling_type": global_pool,
@@ -83,12 +85,7 @@ class TNN_KNN_MLP_G(nn.Module):
             distances = torch.cdist(embeddings, embeddings) # Find if there is cdist without sqrt
 
             distances= mask_knn * distances + (1-mask_knn)*1e7
-            #print(distances.shape)
-            knn_indices = torch.topk(-distances, self.k, dim=-1)[1] 
-            #print(knn_indices[:,0:3])
-            # for i in range(vertex_slice[:-1].shape[0]):
-            #     distances = torch.cdist(embeddings[vertex_slice[i]: vertex_slice[i+1], :], embeddings[vertex_slice[i]: vertex_slice[i+1], :])
-            #     knn_indices[vertex_slice[i]: vertex_slice[i+1]] = vertex_slice[i] + torch.topk(-distances, self.k, dim=-1)[1]
+            knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
 
             pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
@@ -103,53 +100,15 @@ class TNN_KNN_MLP_G(nn.Module):
             for idx, edge in enumerate(edge_index_undirected.T):
                 incidence_matrix_1[edge[0], idx] = 1
                 incidence_matrix_1[edge[1], idx] = 1
-            
-            #print(straight_through_samples.repeat)
 
-            #print(straight_through_samples.flatten())
-
-            #print(knn_indices.flatten())
-
-            # node_triangle_matrix = torch.zeros((data.x.size(0), data.x.size(0)), device=data.x.device)
-
-            # triangle_mask = straight_through_samples.view(-1) == 1.0
-            # selected_knn_indices = knn_indices[triangle_mask]  # Nós incluídos
-            # straight_through_indices = list(torch.where(straight_through_samples==1)[0])
-
-            # incidence_matrix_2 = torch.zeros((edge_index_undirected.shape[1], embeddings.shape[0]),
-            #                                   device=data.x.device, requires_grad=True)
             num_nodes= data.x.size(0)
 
-         
+
 
             mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
-            # node_triangle_matrix= mask.scatter_(1, torch.cat((knn_indices.flatten().unsqueeze(1), torch.arange(0,num_nodes).repeat(3,1).T.flatten().unsqueeze(1)),axis=1), straight_through_samples)
-
-
             node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
-
-            #print("node_triangle: ", node_triangle_matrix)
-
-            #print("node_triangle sum: ", node_triangle_matrix.sum(1))
-
-            #print("grad: ", node_triangle_matrix.grad_fn)
-
-            #mask.scatter_(0, knn_indices, straight_through_samples)
-            
-            #incidence_matrix_temp_2[knn_indices] = straight_through_samples
-
-            #incidence_matrix_2 = incidence_matrix_temp_2.clone().requires_grad_()
             incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
-
             incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
-            
-            #print("incidence_matrix_2: ", incidence_matrix_2)
-
-            #print("incidence_matrix_2 sum: ", incidence_matrix_2.sum(1))
-
-            
-
-            # Apply ProjectionSum to lift node features to edge features
             data_for_lifting = {
                 "x_0": x.float(),  # Node features
                 "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
@@ -187,6 +146,7 @@ class TNN_KNN_MLP_G(nn.Module):
             data.hodge_laplacian_1 = data.laplacian_up_1 + data.laplacian_down_1
             data.hodge_laplacian_2 = data.laplacian_down_2
 
+        data = self.feature_encoder(data)
         tnn_output = self.tnn(data)
         out = self.readout(tnn_output, batch)
 

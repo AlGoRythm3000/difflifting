@@ -238,7 +238,7 @@ def lift_topology(dataset, args):
         data_list = []
         max_dim = 0
         for i, d in enumerate(dataset):
-            lift_fn = LIFTINGS[args.lifting]()
+            lift_fn = LIFTINGS[args.lifting](signed=args.signed)
             new_data = lift_fn(d)
             for key, value in new_data.items():
                 if key.startswith("hodge_laplacian_"):
