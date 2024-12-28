@@ -61,13 +61,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lifting",
         type=str,
-        default="SimplicialCliqueLifting",
+        default="CellCycleLifting",
         choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting"],
     )
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size.")
+    parser.add_argument("--num_layers", type=int, default=4, help="Number of layers.")
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
     )
@@ -76,7 +77,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--logdir", type=str, default="results/", help="Log directory")
     parser.add_argument("--hidden_dim", type=int, default=64)
     parser.add_argument("--depth", type=int, default=2)
-    parser.add_argument("--signed", type=bool, default=True)
+    parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
         "--deepset_aggr_type", type=str, default="sum", choices=["sum", "cat", "mean"]

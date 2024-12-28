@@ -33,39 +33,39 @@ from tools.redout import PropagateSignalDown
 
 
 class TNN_KNN_MLP_G(nn.Module):
-    def __init__(self,in_channels, args, mlp_hidden_dim, tnn_hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum",device="cpu", tnn_type= "SCN2"):
+    def __init__(self,in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum",device="cpu", tnn_type= "SCN2", num_layers=4):
         super(TNN_KNN_MLP_G, self).__init__()
         self.k = k
         self.triangle_count = 0  # Add this to track triangles
         self.diff_lifting = diff_lifting
-        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=mlp_hidden_dim, proj_dropout=0.5)
+        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim, proj_dropout=0.5)
         if diff_lifting:
-            self.gnn = GNN(in_channels, args.hidden_dim, mlp_hidden_dim)
+            self.gnn = GNN(in_channels, hidden_dim, hidden_dim)
             self.pool = global_mean_pool
             self.k = k
             self.mlp = nn.Sequential(
-                nn.Linear(mlp_hidden_dim, 2 * mlp_hidden_dim),
+                nn.Linear(hidden_dim, 2 * hidden_dim),
                 nn.ReLU(),
-                nn.Linear(2 * mlp_hidden_dim, mlp_hidden_dim),
+                nn.Linear(2 * hidden_dim, hidden_dim),
                 nn.ReLU(),
                 nn.Dropout(0.5),
-                nn.Linear(mlp_hidden_dim, 1),
+                nn.Linear(hidden_dim, 1),
             )
             self.triangle_count = 0
             self.projection_sum = ProjectionSum()
 
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
-            in_channels=mlp_hidden_dim,
-            hidden_channels=tnn_hidden_dim,
-            out_channels=num_classes,
+            in_channels=hidden_dim,
+            hidden_channels=hidden_dim,
+            n_layers=num_layers,
             device=device
         )
 
         self.readout = PropagateSignalDown(**{
             "readout_name": "PropagateSignalDownLinear",
             "num_cell_dimensions": 3,
-            "hidden_dim": mlp_hidden_dim,
+            "hidden_dim": hidden_dim,
             "out_channels": num_classes,
             "task_level": "graph",
             "pooling_type": global_pool,

@@ -9,14 +9,14 @@ from tools.normalize import normalize_matrix
 
 
 class TNN(nn.Module):
-    def __init__(self, model_type, in_channels, hidden_channels, out_channels, normalize_laplacians=True,n_layers=4,device="cpu", **kwargs):
+    def __init__(self, model_type, in_channels, hidden_channels, normalize_laplacians=True,n_layers=4,device="cpu", **kwargs):
         super().__init__()
         if model_type == "CWN":
             self.base_model = CWN(in_channels, in_channels, in_channels, hidden_channels, n_layers=n_layers, **kwargs).to(device)
         elif model_type == "SCN2":
             self.base_model = SCN2(in_channels, in_channels, in_channels, n_layers=n_layers, **kwargs).to(device)
         elif model_type == "CXN":
-            self.base_model =  CCXN(in_channels, in_channels, in_channels, hidden_channels,device, **kwargs).to(device)
+            self.base_model =  CCXN(in_channels, in_channels, in_channels, n_layers=n_layers).to(device)
         print("Type of base_model:", type(self.base_model))
         self.pooling_fun = global_mean_pool
         self.normalize_laplacians = normalize_laplacians
@@ -37,8 +37,8 @@ class TNN(nn.Module):
                             data.incidence_1.T)
         elif self.model_type == "CXN":
             x = self.base_model(data.x_0, data.x_1,
-                            data.laplacian_up_0,
-                            data.incidence_2)
+                            data.adjacency_0,
+                            data.incidence_2.T)
 
         model_out["x_0"] = x[0]
         model_out["x_1"] = x[1]

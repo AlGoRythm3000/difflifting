@@ -31,6 +31,7 @@ if __name__ == '__main__':
     args = parse_args()
     # mlflow.set_experiment(f"/{args.tnn}_{args.lifting}_{args.seed}_{args.dataset}")
     set_seed(args.seed)
+    print(args.__dict__)
     data, num_features, num_classes = choose_dataset(args, device)
     train_loader = data[0]
     val_loader = data[1]
@@ -38,8 +39,8 @@ if __name__ == '__main__':
 
 
     diff_lifting = True if args.lifting == "diffLifting" else False
-    model = TNN_KNN_MLP_G(num_features, args, mlp_hidden_dim=args.hidden_dim, tnn_hidden_dim=args.hidden_dim, num_classes=num_classes,
-                          k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling, device=device, tnn_type=args.tnn)
+    model = TNN_KNN_MLP_G(num_features, args, hidden_dim=args.hidden_dim, num_classes=num_classes,
+                          k=3, diff_lifting=diff_lifting, global_pool=args.global_pooling, device=device, tnn_type=args.tnn, num_layers=args.num_layers)
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
@@ -64,7 +65,7 @@ if __name__ == '__main__':
         "Number of parameters:",
         sum(p.numel() for p in model.parameters() if p.requires_grad),
     )
-
+    summary(model)
     scheduler = ReduceLROnPlateau(
         optimizer,
         mode="max",
@@ -78,6 +79,8 @@ if __name__ == '__main__':
     evaluator = None
     if args.dataset == "ogbg-molhiv":
         evaluator = Evaluator(args.dataset)
+
+
 
     # with mlflow.start_run() as run:
     #
