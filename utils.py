@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="NCI1",
+        default="REDDIT-BINARY",
         choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY","REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
