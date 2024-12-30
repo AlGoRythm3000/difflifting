@@ -32,7 +32,7 @@ class TNN(nn.Module):
                             normalize_matrix(data.hodge_laplacian_2, 2))
         elif self.model_type == "CWN":
             x = self.base_model(data.x_0, data.x_1, data.x_2,
-                            data.up_laplacian_1,
+                            data.adjacency_1,
                             data.incidence_2,
                             data.incidence_1.T)
         elif self.model_type == "CXN":
