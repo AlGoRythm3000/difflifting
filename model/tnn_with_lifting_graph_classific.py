@@ -103,19 +103,27 @@ class TNN_KNN_MLP_G(nn.Module):
 
             num_nodes= data.x.size(0)
 
-
+            
 
             mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
             node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
             incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
             incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
+
+            if "hypegraph": 
+                incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
+            
             data_for_lifting = {
                 "x_0": x.float(),  # Node features
                 "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                 "incidence_2": incidence_matrix_2,  # edge_to-triangle
             }
+
+            
+
             lifted_data = self.projection_sum(data_for_lifting)
 
+            
             data.x_0 = x.float()
             data.x_1 = lifted_data["x_1"]
             data.x_2 = lifted_data["x_2"]

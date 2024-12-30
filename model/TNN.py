@@ -39,6 +39,8 @@ class TNN(nn.Module):
             x = self.base_model(data.x_0, data.x_1,
                             data.adjacency_0,
                             data.incidence_2.T)
+        elif "hypergraph":
+            sel
 
         model_out["x_0"] = x[0]
         model_out["x_1"] = x[1]
