@@ -32,6 +32,7 @@ from torch_geometric.transforms import BaseTransform
 from model.tnn_with_lifiting import ProjectionSum
 from preprocessing.preprocessing import remove_duplicate_edges
 from tools.redout import PropagateSignalDown
+from tools.redout import DirectReadout
 
 
 class TNN_KNN_MLP_G(nn.Module):
@@ -41,6 +42,8 @@ class TNN_KNN_MLP_G(nn.Module):
         self.triangle_count = 0  # Add this to track triangles
         self.diff_lifting = diff_lifting
         self.tnn_type = tnn_type
+        self.num_classes = num_classes
+        #self.lin= nn.Linear(tnn_out_feat, num_classes)
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim, proj_dropout=0.5)
         if diff_lifting:
             self.gnn = GNN(in_channels, hidden_dim, hidden_dim)
@@ -64,15 +67,21 @@ class TNN_KNN_MLP_G(nn.Module):
             n_layers=num_layers,
             device=device
         )
-
-        self.readout = PropagateSignalDown(**{
-            "readout_name": "PropagateSignalDownLinear",
-            "num_cell_dimensions": 3,
-            "hidden_dim": hidden_dim,
-            "out_channels": num_classes,
-            "task_level": "graph",
-            "pooling_type": global_pool,
+        # self.readout = PropagateSignalDown(**{
+        #     "readout_name": "PropagateSignalDownLinear",
+        #     "num_cell_dimensions": 3,
+        #     "hidden_dim": hidden_dim,
+        #     "out_channels": num_classes,
+        #     "task_level": "graph",
+        #     "pooling_type": global_pool,
+        # })
+        self.readout = DirectReadout(**{
+                "readout_name": "DirectReadout",
+                "task_level": "graph",
+                "hidden_dim": hidden_dim,
+                "out_channels": num_classes,
         })
+
 
     def forward(self, batch):
         data = batch
@@ -159,38 +168,23 @@ class TNN_KNN_MLP_G(nn.Module):
 
             
             data.x_0 = x.float()
-            #data.x_1 = lifted_data["x_1"]
-            #data.x_2 = lifted_data["x_2"]
 
             new_edge_index, new_edge_attr = torch_geometric.utils.get_laplacian(data.edge_index)
-            # laplacian_0 = torch.sparse_coo_tensor(
-            #     indices=new_edge_index,
-            #     values=new_edge_attr,
-            #     size=(data.x.shape[0], data.x.shape[0])
-            # )
-
-            # data.laplacian_up_0 = laplacian_0
-            # # data.laplacian_down_0 = torch.zeros((data.x.size(0), num_edges), device=data.x.device).to_sparse_coo()
-
-            # data.laplacian_up_1 = torch.spmm(data_for_lifting["incidence_2"],
-            #                                  data_for_lifting["incidence_2"].T).to_sparse_coo()
-            # data.laplacian_down_1 = torch.spmm(data_for_lifting["incidence_1"].T,
-            #                                    data_for_lifting["incidence_1"]).to_sparse_coo()
-
-            # data.laplacian_down_2 = torch.spmm(data_for_lifting["incidence_2"].T,
-            #                                    data_for_lifting["incidence_2"]).to_sparse_coo()
-            # data.node_edge_matrix = incidence_matrix_1
+           
 
             data.incidence_1 = data_for_lifting.get("incidence_1")
-            #data.incidence_2 = data_for_lifting.get("incidence_2")
 
-            # data.hodge_laplacian_0 = data.laplacian_up_0  # + data.laplacian_down_0
-            # data.hodge_laplacian_1 = data.laplacian_up_1 + data.laplacian_down_1
-            # data.hodge_laplacian_2 = data.laplacian_down_2
+            data.incidence_1= torch.Tensor(data.incidence_1).to_sparse_coo()
+
+            print(data.incidence_1)
+           
 
         data = self.feature_encoder(data)
+        print("DATA: ", data)
+        print("DATA x0: ", data.x_0)
         tnn_output = self.tnn(data)
+        print(tnn_output)
         out = self.readout(tnn_output, batch)
-
-
+        #print(tnn_output)
         return out["logits"]
+       
