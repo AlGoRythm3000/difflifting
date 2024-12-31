@@ -2,6 +2,7 @@ import torch
 from topomodelx.nn.cell.ccxn import CCXN
 from topomodelx.nn.cell.cwn import CWN
 from topomodelx.nn.simplicial.scn2 import SCN2
+from topomodelx.nn.hypergraph.unigcnii import UniGCNII
 from torch import nn
 from torch_geometric.nn import global_mean_pool
 from model.models.model_factory import ModelFactory
@@ -17,6 +18,9 @@ class TNN(nn.Module):
             self.base_model = SCN2(in_channels, in_channels, in_channels, n_layers=n_layers, **kwargs).to(device)
         elif model_type == "CXN":
             self.base_model =  CCXN(in_channels, in_channels, in_channels, n_layers=n_layers).to(device)
+        elif model_type == "UniGCNII":
+            self.base_model =  UniGCNII(in_channels, in_channels).to(device)
+        
         print("Type of base_model:", type(self.base_model))
         self.pooling_fun = global_mean_pool
         self.normalize_laplacians = normalize_laplacians
@@ -39,10 +43,17 @@ class TNN(nn.Module):
             x = self.base_model(data.x_0, data.x_1,
                             data.adjacency_0,
                             data.incidence_2.T)
-        elif "hypergraph":
-            sel
+        elif self.model_type == "UniGCNII":
+            print("Type of x:", type(x))
+            print("incidence 1:", data.incidence_1)
+            print("num nodes: ", data.x_0.shape[0])
+            
+            x = self.base_model(data.x_0, data.incidence_1)
+        
+        print("Type of x:", type(x))
+        print("incidence 1:", data.incidence_1)
 
         model_out["x_0"] = x[0]
-        model_out["x_1"] = x[1]
-        model_out["x_2"] = x[2]
+        # model_out["x_1"] = x[1]
+        # model_out["x_2"] = x[2]
         return model_out

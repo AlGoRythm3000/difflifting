@@ -6,6 +6,8 @@ import torch_sparse
 from torch_geometric.data import Batch
 from torch_geometric.nn import global_mean_pool
 import torch.nn.functional as F
+from torch_geometric.utils import degree
+
 
 import torch_geometric
 
@@ -38,6 +40,7 @@ class TNN_KNN_MLP_G(nn.Module):
         self.k = k
         self.triangle_count = 0  # Add this to track triangles
         self.diff_lifting = diff_lifting
+        self.tnn_type = tnn_type
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim, proj_dropout=0.5)
         if diff_lifting:
             self.gnn = GNN(in_channels, hidden_dim, hidden_dim)
@@ -103,21 +106,52 @@ class TNN_KNN_MLP_G(nn.Module):
 
             num_nodes= data.x.size(0)
 
+            print("num_edges: ",num_edges)
             
 
             mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
+            
             node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
+            print("shape node triangle: ",node_triangle_matrix.shape)
             incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
             incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
-
-            if "hypegraph": 
-                incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
             
-            data_for_lifting = {
-                "x_0": x.float(),  # Node features
-                "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
-                "incidence_2": incidence_matrix_2,  # edge_to-triangle
-            }
+            data_for_lifting={}
+
+            if self.tnn_type == "UniGCNII": 
+                incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
+
+                print("shape: ",incidence_matrix_1.shape)
+
+                # Sum along dimension 1 (columns)
+                row_sums = torch.sum(incidence_matrix_1, dim=1)
+                print("Sum of each row:", row_sums)
+                print(torch.where(row_sums == 0))
+
+                                # Find indices of nodes with row_sums == 0
+                zero_row_nodes = torch.where(row_sums == 0)[0]
+
+                # Compute node degrees
+                num_nodes = data.num_nodes  # Total number of nodes in the graph
+                node_degrees = degree(data.edge_index[0], num_nodes=num_nodes)  # Degree of each node
+
+                # Extract degrees of nodes with zero row sums
+                degrees_of_zero_row_nodes = node_degrees[zero_row_nodes]
+
+                print("Indices of nodes with zero row sums:", zero_row_nodes)
+                print("Degrees of these nodes:", degrees_of_zero_row_nodes)
+                
+                data_for_lifting = {
+                    "x_0": x.float(),  # Node features
+                    "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
+                }
+
+            else:
+                data_for_lifting = {
+                    "x_0": x.float(),  # Node features
+                    "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
+                    "incidence_2": incidence_matrix_2,  # edge_to-triangle
+                }
 
             
 
@@ -125,34 +159,34 @@ class TNN_KNN_MLP_G(nn.Module):
 
             
             data.x_0 = x.float()
-            data.x_1 = lifted_data["x_1"]
-            data.x_2 = lifted_data["x_2"]
+            #data.x_1 = lifted_data["x_1"]
+            #data.x_2 = lifted_data["x_2"]
 
             new_edge_index, new_edge_attr = torch_geometric.utils.get_laplacian(data.edge_index)
-            laplacian_0 = torch.sparse_coo_tensor(
-                indices=new_edge_index,
-                values=new_edge_attr,
-                size=(data.x.shape[0], data.x.shape[0])
-            )
+            # laplacian_0 = torch.sparse_coo_tensor(
+            #     indices=new_edge_index,
+            #     values=new_edge_attr,
+            #     size=(data.x.shape[0], data.x.shape[0])
+            # )
 
-            data.laplacian_up_0 = laplacian_0
-            # data.laplacian_down_0 = torch.zeros((data.x.size(0), num_edges), device=data.x.device).to_sparse_coo()
+            # data.laplacian_up_0 = laplacian_0
+            # # data.laplacian_down_0 = torch.zeros((data.x.size(0), num_edges), device=data.x.device).to_sparse_coo()
 
-            data.laplacian_up_1 = torch.spmm(data_for_lifting["incidence_2"],
-                                             data_for_lifting["incidence_2"].T).to_sparse_coo()
-            data.laplacian_down_1 = torch.spmm(data_for_lifting["incidence_1"].T,
-                                               data_for_lifting["incidence_1"]).to_sparse_coo()
+            # data.laplacian_up_1 = torch.spmm(data_for_lifting["incidence_2"],
+            #                                  data_for_lifting["incidence_2"].T).to_sparse_coo()
+            # data.laplacian_down_1 = torch.spmm(data_for_lifting["incidence_1"].T,
+            #                                    data_for_lifting["incidence_1"]).to_sparse_coo()
 
-            data.laplacian_down_2 = torch.spmm(data_for_lifting["incidence_2"].T,
-                                               data_for_lifting["incidence_2"]).to_sparse_coo()
-            data.node_edge_matrix = incidence_matrix_1
+            # data.laplacian_down_2 = torch.spmm(data_for_lifting["incidence_2"].T,
+            #                                    data_for_lifting["incidence_2"]).to_sparse_coo()
+            # data.node_edge_matrix = incidence_matrix_1
 
             data.incidence_1 = data_for_lifting.get("incidence_1")
-            data.incidence_2 = data_for_lifting.get("incidence_2")
+            #data.incidence_2 = data_for_lifting.get("incidence_2")
 
-            data.hodge_laplacian_0 = data.laplacian_up_0  # + data.laplacian_down_0
-            data.hodge_laplacian_1 = data.laplacian_up_1 + data.laplacian_down_1
-            data.hodge_laplacian_2 = data.laplacian_down_2
+            # data.hodge_laplacian_0 = data.laplacian_up_0  # + data.laplacian_down_0
+            # data.hodge_laplacian_1 = data.laplacian_up_1 + data.laplacian_down_1
+            # data.hodge_laplacian_2 = data.laplacian_down_2
 
         data = self.feature_encoder(data)
         tnn_output = self.tnn(data)
