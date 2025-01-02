@@ -115,13 +115,13 @@ class TNN_KNN_MLP_G(nn.Module):
 
             num_nodes= data.x.size(0)
 
-            print("num_edges: ",num_edges)
+            #print("num_edges: ",num_edges)
             
 
             mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
             
             node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
-            print("shape node triangle: ",node_triangle_matrix.shape)
+            #print("shape node triangle: ",node_triangle_matrix.shape)
             incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
             incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
             
@@ -130,25 +130,25 @@ class TNN_KNN_MLP_G(nn.Module):
             if self.tnn_type == "UniGCNII": 
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
 
-                print("shape: ",incidence_matrix_1.shape)
+                #print("shape: ",incidence_matrix_1.shape)
 
                 # Sum along dimension 1 (columns)
-                row_sums = torch.sum(incidence_matrix_1, dim=1)
-                print("Sum of each row:", row_sums)
-                print(torch.where(row_sums == 0))
+                # row_sums = torch.sum(incidence_matrix_1, dim=1)
+                # # print("Sum of each row:", row_sums)
+                # # print(torch.where(row_sums == 0))
 
-                                # Find indices of nodes with row_sums == 0
-                zero_row_nodes = torch.where(row_sums == 0)[0]
+                #                 # Find indices of nodes with row_sums == 0
+                # zero_row_nodes = torch.where(row_sums == 0)[0]
 
-                # Compute node degrees
-                num_nodes = data.num_nodes  # Total number of nodes in the graph
-                node_degrees = degree(data.edge_index[0], num_nodes=num_nodes)  # Degree of each node
+                # # Compute node degrees
+                # num_nodes = data.num_nodes  # Total number of nodes in the graph
+                # node_degrees = degree(data.edge_index[0], num_nodes=num_nodes)  # Degree of each node
 
-                # Extract degrees of nodes with zero row sums
-                degrees_of_zero_row_nodes = node_degrees[zero_row_nodes]
+                # # Extract degrees of nodes with zero row sums
+                # degrees_of_zero_row_nodes = node_degrees[zero_row_nodes]
 
-                print("Indices of nodes with zero row sums:", zero_row_nodes)
-                print("Degrees of these nodes:", degrees_of_zero_row_nodes)
+                # print("Indices of nodes with zero row sums:", zero_row_nodes)
+                # print("Degrees of these nodes:", degrees_of_zero_row_nodes)
                 
                 data_for_lifting = {
                     "x_0": x.float(),  # Node features
@@ -176,14 +176,14 @@ class TNN_KNN_MLP_G(nn.Module):
 
             data.incidence_1= torch.Tensor(data.incidence_1).to_sparse_coo()
 
-            print(data.incidence_1)
+            #print(data.incidence_1)
            
 
         data = self.feature_encoder(data)
-        print("DATA: ", data)
-        print("DATA x0: ", data.x_0)
+        #print("DATA: ", data)
+        #print("DATA x0: ", data.x_0)
         tnn_output = self.tnn(data)
-        print(tnn_output)
+        #print(tnn_output)
         out = self.readout(tnn_output, batch)
         #print(tnn_output)
         return out["logits"]

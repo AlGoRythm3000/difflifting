@@ -47,14 +47,14 @@ class TNN(nn.Module):
                             data.adjacency_0,
                             data.incidence_2.T)
         elif self.model_type == "UniGCNII":
-            print("Type of x:", type(x))
-            print("incidence 1:", data.incidence_1)
-            print("num nodes: ", data.x_0.shape[0])
+            # print("Type of x:", type(x))
+            # print("incidence 1:", data.incidence_1)
+            # print("num nodes: ", data.x_0.shape[0])
             
             x = self.base_model(data.x_0, data.incidence_1)
         
-        print("Type of x:", type(x))
-        print("incidence 1:", data.incidence_1)
+        # print("Type of x:", type(x))
+        # print("incidence 1:", data.incidence_1)
 
         model_out["x_0"] = x[0]
         model_out["x_1"] = x[1]
@@ -158,20 +158,20 @@ class UniGCNII(torch.nn.Module):
         x_1 : torch.Tensor
             Output hyperedge features.
         """
-        print("FIRST X_0", x_0)
+        #print("FIRST X_0", x_0)
         x_0 = self.input_drop(x_0)
         x_0 = self.initial_linear_layer(x_0)
         x_0 = torch.nn.functional.relu(x_0)
         x_0_skip = x_0
-        print("FORWARD X_0", x_0)
+        #print("FORWARD X_0", x_0)
         #assert(False)
         for layer in self.layers:
             x_0, x_1 = layer(x_0, incidence_1, x_0_skip)
-            print("first",x_0, "\n\n ")
+            #print("first",x_0, "\n\n ")
             x_0 = self.layer_drop(x_0)
-            print("second",x_0, "\n\n ")
+            #print("second",x_0, "\n\n ")
             x_0 = torch.nn.functional.relu(x_0)
-            print("last",x_0, "\n\n ")
+            #print("last",x_0, "\n\n ")
 
         return x_0, x_1
 

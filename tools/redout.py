@@ -87,7 +87,7 @@ class AbstractZeroCellReadOut(torch.nn.Module):
         """
         if self.task_level == "graph":
             x = scatter(x, batch, dim=0, reduce=self.pooling_type)
-            print("PASSOOUUUU\n")
+            #print("PASSOOUUUU\n")
 
         return self.linear(x)
 
