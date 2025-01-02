@@ -36,29 +36,24 @@ class TNN(nn.Module):
                             normalize_matrix(data.hodge_laplacian_1, 1),
                             normalize_matrix(data.hodge_laplacian_2, 2))
         elif self.model_type == "CWN":
-            print("CWN")
             x = self.base_model(data.x_0, data.x_1, data.x_2,
                             data.adjacency_1,
                             data.incidence_2,
                             data.incidence_1.T)
         elif self.model_type == "CXN":
-            print("CXN")
             x = self.base_model(data.x_0, data.x_1,
                             data.adjacency_0,
                             data.incidence_2.T)
         elif self.model_type == "UniGCNII":
-            # print("Type of x:", type(x))
-            # print("incidence 1:", data.incidence_1)
-            # print("num nodes: ", data.x_0.shape[0])
+
             
             x = self.base_model(data.x_0, data.incidence_1)
         
-        # print("Type of x:", type(x))
-        # print("incidence 1:", data.incidence_1)
+
 
         model_out["x_0"] = x[0]
         model_out["x_1"] = x[1]
-        # model_out["x_2"] = x[2]
+        model_out["x_2"] = x[2]
         return model_out
     
 

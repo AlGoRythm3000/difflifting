@@ -225,7 +225,9 @@ def tu_datasets(name,args, no_feat_replacement='constant'):
     path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, name)
     if name == "IMDB-BINARY":
         dataset = TUDataset(name=name, root=path, transform= T.Compose([NodeDegrees(), OneHotDegreeFeatures()]),use_node_attr=False,)
-    # else:
+    else:
+        dataset = TUDataset(name=name, root=path,
+                            use_node_attr=False, )
 
     # if not hasattr(dataset, 'x'):
     #     max_degree = 0

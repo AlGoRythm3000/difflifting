@@ -48,35 +48,48 @@ def parse_args() -> argparse.Namespace:
         --deepset_aggr_type (str): Aggregation type for DeepSet, options are 'sum', 'cat', 'mean'. Default is 'sum'.
         --global_pooling (str): Global pooling method, options are 'sum', 'mean'. Default is 'mean'.
     """
+    # python - m
+    # topobenchmark
+    # model = cell / ccxn
+    # dataset = graph / NCI1
+    # optimizer.parameters.lr = 0.01
+    # model.feature_encoder.out_channels = 32
+    # model.backbone.n_layers = 1
+    # model.readout.readout_name = PropagateSignalDown
+    # model.feature_encoder.proj_dropout = 0.25
+    # dataset.dataloader_params.batch_size = 128
+    # transforms.graph2cell_lifting.max_cell_length = 10
+    # dataset.split_params.data_seed = 0
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="gin", choices=["gcn", "gin", "linear"])
-    parser.add_argument("--tnn", type=str, default="CWN", choices=["CWN", "SCN2", "CXN", "UniGCNII"])
+    parser.add_argument("--tnn", type=str, default="CXN", choices=["CWN", "SCN2", "CXN", "UniGCNII"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="REDDIT-BINARY",
+        default="NCI1",
         choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY","REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
         "--lifting",
         type=str,
-        default="diffLifting",
+        default="CellCycleLifting",
         choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting", "HypergraphKHopLifting"],
     )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size.")
-    parser.add_argument("--num_layers", type=int, default=4, help="Number of layers.")
+    parser.add_argument("--num_layers", type=int, default=1, help="Number of layers.")
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
     )
     parser.add_argument("--early_stop_patience", type=int, default=40)
     parser.add_argument("--lr_decay_patience", type=int, default=10)
     parser.add_argument("--logdir", type=str, default="results/", help="Log directory")
-    parser.add_argument("--hidden_dim", type=int, default=64)
+    parser.add_argument("--hidden_dim", type=int, default=32)
     parser.add_argument("--depth", type=int, default=2)
+    parser.add_argument("--no_redout", type=bool, default=False)
     parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
