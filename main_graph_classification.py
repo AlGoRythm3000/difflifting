@@ -44,8 +44,6 @@ if __name__ == '__main__':
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    criterion = nn.CrossEntropyLoss()
-
 
 
     def train_eval(model, train_loader, val_loader, test_loader, loss_fn, optimizer, evaluator, device):
@@ -73,9 +71,9 @@ if __name__ == '__main__':
         min_lr=1e-6,
         patience=args.lr_decay_patience,
     )
-    loss_fn = torch.nn.CrossEntropyLoss()
+    loss_fn = torch.nn.CrossEntropyLoss(reduction='sum')
     if args.dataset == "ZINC":
-        loss_fn = torch.nn.L1Loss(reduction='mean')
+        loss_fn = torch.nn.L1Loss(reduction='sum')
     evaluator = None
     if args.dataset == "ogbg-molhiv":
         evaluator = Evaluator(args.dataset)
@@ -116,11 +114,11 @@ if __name__ == '__main__':
             val_accuracies.append(val_acc)
             val_losses.append(val_loss)  # test losses
 
-            train_losses.append(torch.tensor(train_loss).mean())  # train losses
+            train_losses.append(train_loss)  # train losses
 
             # if (epoch - 1) % args.interval == 0:
             print(
-                f"{epoch:3d}: Train Loss: {torch.tensor(train_loss).mean():.3f},"
+                f"{epoch:3d}: Train Loss: {train_loss:.3f},"
                 f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
                 f"Test Loss: {test_loss:.3f}, Test Acc: {test_accuracies[-1]:.3f}"
             )
