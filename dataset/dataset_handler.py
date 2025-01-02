@@ -28,6 +28,7 @@ LIFTINGS = {
     "CellCycleLifting": CellCycleLifting,
     "HypergraphKHopLifting": HypergraphKHopLifting
 }
+PATH = "../DATA/DATASETS"
 
 class FilterConstant(object):
   def __init__(self, dim):
@@ -67,7 +68,7 @@ def get_ogb_data(name: str) -> PygGraphPropPredDataset:
     Returns:
         PygGraphPropPredDataset: The loaded dataset object.
     """
-    path = osp.dirname(osp.realpath(__file__))
+    path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, name)
     dataset = PygGraphPropPredDataset(name=name, root=path)
 
 
@@ -196,7 +197,7 @@ def get_zinc(args):
     Returns:
         tuple: A tuple containing the training, validation, and test datasets.
     """
-    path = osp.join(osp.dirname(osp.realpath(__file__)), "..", "ZINC")
+    path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, "ZINC")
     train_data = ZINC(path, subset=True, split="train")
     data_val = ZINC(path, subset=True, split="val")
     data_test = ZINC(path, subset=True, split="test")
@@ -221,7 +222,7 @@ def tu_datasets(name,args, no_feat_replacement='constant'):
     Returns:
         TUDataset: The loaded dataset, potentially with transformed features.
     """
-    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', name)
+    path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, name)
     if name == "IMDB-BINARY":
         dataset = TUDataset(name=name, root=path, transform= T.Compose([NodeDegrees(), OneHotDegreeFeatures()]),use_node_attr=False,)
     # else:
