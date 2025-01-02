@@ -22,14 +22,14 @@ triangle_counts = []  # Add this list to store triangle counts
 
 torch.autograd.set_detect_anomaly(True)
 import tempfile
-# import mlflow.pytorch
+import mlflow.pytorch
 if __name__ == '__main__':
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     args = parse_args()
-    # mlflow.set_experiment(f"/{args.tnn}_{args.lifting}_{args.seed}_{args.dataset}")
+    mlflow.set_experiment(f"/{args.tnn}_{args.lifting}_{args.seed}_{args.dataset}")
     set_seed(args.seed)
     print(args.__dict__)
     data, num_features, num_classes = choose_dataset(args, device)
@@ -82,59 +82,60 @@ if __name__ == '__main__':
 
 
 
-    # with mlflow.start_run() as run:
-    #
-    #     mlflow.log_params(args.__dict__,)
-    #
-    #
-    #     mlflow.pytorch.log_model(model, 'models')
-    #     with open("model_summary.txt", "w", encoding="utf-8") as f:
-    #         f.write(str(summary(model, depth=5, verbose=2)))
-    #     mlflow.log_artifact("model_summary.txt")
-    for epoch in range(1, args.max_epochs):
-        train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
-            model,
-            train_loader,
-            val_loader,
-            test_loader,
-            loss_fn,
-            optimizer,
-            evaluator,
-            device
-        )
-        # mlflow.log_metric('train loss',torch.tensor(train_loss).mean().item(), step=epoch)
-        # mlflow.log_metric('val loss', val_loss.item(), step=epoch)
-        # mlflow.log_metric('test loss', test_loss.item(), step=epoch)
-        # mlflow.log_metric('test acc', test_acc.item(), step=epoch)
-        # mlflow.pytorch.autolog()
-        # for name, param in model.named_parameters():
-        #     print(f"{name} gradient: {param.grad}")
-        test_accuracies.append(test_acc)
-        test_losses.append(test_loss)  # test losses
+    with mlflow.start_run() as run:
 
-        val_accuracies.append(val_acc)
-        val_losses.append(val_loss)  # test losses
+        mlflow.log_params(args.__dict__,)
 
-        train_losses.append(torch.tensor(train_loss).mean())  # train losses
 
-        # if (epoch - 1) % args.interval == 0:
-        print(
-            f"{epoch:3d}: Train Loss: {torch.tensor(train_loss).mean():.3f},"
-            f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
-            f"Test Loss: {test_loss:.3f}, Test Acc: {test_accuracies[-1]:.3f}"
-        )
+        mlflow.pytorch.log_model(model, 'models')
+        with open("model_summary.txt", "w", encoding="utf-8") as f:
+            f.write(str(summary(model, depth=5, verbose=2)))
+        mlflow.log_artifact("model_summary.txt")
+        for epoch in range(1, args.max_epochs):
+            train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
+                model,
+                train_loader,
+                val_loader,
+                test_loader,
+                loss_fn,
+                optimizer,
+                evaluator,
+                device
+            )
+            mlflow.log_metric('train loss',torch.tensor(train_loss).mean().item(), step=epoch)
+            mlflow.log_metric('val loss', val_loss.item(), step=epoch)
+            mlflow.log_metric('test loss', test_loss.item(), step=epoch)
+            mlflow.log_metric('test acc', test_acc.item(), step=epoch)
+            mlflow.log_metric('val acc', test_acc.item(), step=epoch)
+            mlflow.pytorch.autolog()
+            # for name, param in model.named_parameters():
+            #     print(f"{name} gradient: {param.grad}")
+            test_accuracies.append(test_acc)
+            test_losses.append(test_loss)  # test losses
 
-        scheduler.step(val_acc)
+            val_accuracies.append(val_acc)
+            val_losses.append(val_loss)  # test losses
 
-        if epoch > 2 and val_accuracies[-1] <= val_accuracies[-2 - epochs_no_improve]:
-            epochs_no_improve = epochs_no_improve + 1
+            train_losses.append(torch.tensor(train_loss).mean())  # train losses
 
-        else:
-            epochs_no_improve = 0
+            # if (epoch - 1) % args.interval == 0:
+            print(
+                f"{epoch:3d}: Train Loss: {torch.tensor(train_loss).mean():.3f},"
+                f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
+                f"Test Loss: {test_loss:.3f}, Test Acc: {test_accuracies[-1]:.3f}"
+            )
 
-        if epochs_no_improve >= args.early_stop_patience:
-            print("Early stopping!")
-            break
+            scheduler.step(val_acc)
+
+            if epoch > 2 and val_accuracies[-1] <= val_accuracies[-2 - epochs_no_improve]:
+                epochs_no_improve = epochs_no_improve + 1
+
+            else:
+                epochs_no_improve = 0
+
+            if epochs_no_improve >= args.early_stop_patience:
+                print("Early stopping!")
+                break
 
     results = {
         "train_losses": tensor(train_losses),

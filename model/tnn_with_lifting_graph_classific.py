@@ -36,6 +36,7 @@ from tools.redout import DirectReadout
 
 
 class TNN_KNN_MLP_G(nn.Module):
+
     def __init__(self,in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum",device="cpu", tnn_type= "SCN2", num_layers=4):
         super(TNN_KNN_MLP_G, self).__init__()
         self.k = k
@@ -67,21 +68,50 @@ class TNN_KNN_MLP_G(nn.Module):
             n_layers=num_layers,
             device=device
         )
-        # self.readout = PropagateSignalDown(**{
-        #     "readout_name": "PropagateSignalDownLinear",
-        #     "num_cell_dimensions": 3,
-        #     "hidden_dim": hidden_dim,
-        #     "out_channels": num_classes,
-        #     "task_level": "graph",
-        #     "pooling_type": global_pool,
-        # })
-        self.readout = DirectReadout(**{
+        if args.no_redout:
+            self.readout = DirectReadout(**{
                 "readout_name": "DirectReadout",
                 "task_level": "graph",
                 "hidden_dim": hidden_dim,
                 "out_channels": num_classes,
-        })
+            })
+        else:
+            self.readout = PropagateSignalDown(**{
+                "readout_name": "PropagateSignalDownLinear",
+                "num_cell_dimensions": 3,
+                "hidden_dim": hidden_dim,
+                "out_channels": num_classes,
+                "task_level": "graph",
+                "pooling_type": global_pool,
+            })
 
+    def __create_laplacians(self, data,incidence_matrix_1, lifted_data, data_for_lifting):
+        new_edge_index, new_edge_attr = torch_geometric.utils.get_laplacian(data.edge_index)
+        data.x_1 = lifted_data["x_1"]
+        data.x_2 = lifted_data["x_2"]
+        laplacian_0 = torch.sparse_coo_tensor(
+            indices=new_edge_index,
+            values=new_edge_attr,
+            size=(data.x.shape[0], data.x.shape[0])
+        )
+
+        data.laplacian_up_0 = laplacian_0
+        data.laplacian_up_1 = torch.spmm(data_for_lifting["incidence_2"],
+                                         data_for_lifting["incidence_2"].T).to_sparse_coo()
+        data.laplacian_down_1 = torch.spmm(data_for_lifting["incidence_1"].T,
+                                           data_for_lifting["incidence_1"]).to_sparse_coo()
+
+        data.laplacian_down_2 = torch.spmm(data_for_lifting["incidence_2"].T,
+                                           data_for_lifting["incidence_2"]).to_sparse_coo()
+        data.node_edge_matrix = incidence_matrix_1
+
+        data.incidence_1 = data_for_lifting.get("incidence_1")
+        data.incidence_2 = data_for_lifting.get("incidence_2")
+
+        data.hodge_laplacian_0 = data.laplacian_up_0  # + data.laplacian_down_0
+        data.hodge_laplacian_1 = data.laplacian_up_1 + data.laplacian_down_1
+        data.hodge_laplacian_2 = data.laplacian_down_2
+        return data
 
     def forward(self, batch):
         data = batch
@@ -115,41 +145,19 @@ class TNN_KNN_MLP_G(nn.Module):
 
             num_nodes= data.x.size(0)
 
-            #print("num_edges: ",num_edges)
-            
+
 
             mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
-            
+
             node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
-            #print("shape node triangle: ",node_triangle_matrix.shape)
+
             incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
             incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
-            
+
             data_for_lifting={}
 
-            if self.tnn_type == "UniGCNII": 
+            if self.tnn_type == "UniGCNII":
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
-
-                #print("shape: ",incidence_matrix_1.shape)
-
-                # Sum along dimension 1 (columns)
-                # row_sums = torch.sum(incidence_matrix_1, dim=1)
-                # # print("Sum of each row:", row_sums)
-                # # print(torch.where(row_sums == 0))
-
-                #                 # Find indices of nodes with row_sums == 0
-                # zero_row_nodes = torch.where(row_sums == 0)[0]
-
-                # # Compute node degrees
-                # num_nodes = data.num_nodes  # Total number of nodes in the graph
-                # node_degrees = degree(data.edge_index[0], num_nodes=num_nodes)  # Degree of each node
-
-                # # Extract degrees of nodes with zero row sums
-                # degrees_of_zero_row_nodes = node_degrees[zero_row_nodes]
-
-                # print("Indices of nodes with zero row sums:", zero_row_nodes)
-                # print("Degrees of these nodes:", degrees_of_zero_row_nodes)
-                
                 data_for_lifting = {
                     "x_0": x.float(),  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
@@ -162,29 +170,22 @@ class TNN_KNN_MLP_G(nn.Module):
                     "incidence_2": incidence_matrix_2,  # edge_to-triangle
                 }
 
-            
 
             lifted_data = self.projection_sum(data_for_lifting)
 
-            
             data.x_0 = x.float()
 
-            new_edge_index, new_edge_attr = torch_geometric.utils.get_laplacian(data.edge_index)
-           
+            if self.tnn_type != "UniGCNII":
+                data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
+
 
             data.incidence_1 = data_for_lifting.get("incidence_1")
-
             data.incidence_1= torch.Tensor(data.incidence_1).to_sparse_coo()
 
-            #print(data.incidence_1)
-           
 
         data = self.feature_encoder(data)
-        #print("DATA: ", data)
-        #print("DATA x0: ", data.x_0)
         tnn_output = self.tnn(data)
-        #print(tnn_output)
         out = self.readout(tnn_output, batch)
-        #print(tnn_output)
+
+
         return out["logits"]
-       

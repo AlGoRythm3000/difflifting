@@ -10,6 +10,8 @@ import torch_geometric.transforms as T
 from torch_geometric.datasets import KarateClub
 from torch_geometric.datasets import Planetoid
 from torch_geometric.loader import DataLoader
+
+from preprocessing.one_hot_degree_features.transforms import OneHotDegreeFeatures, NodeDegrees
 from tools.collate import collate_fn
 from tools.lifting.clique_lifting import SimplicialCliqueLifting
 from tools.lifting.khop import SimplicialKHopLifting
@@ -220,17 +222,20 @@ def tu_datasets(name,args, no_feat_replacement='constant'):
         TUDataset: The loaded dataset, potentially with transformed features.
     """
     path = osp.join(osp.dirname(osp.realpath(__file__)), '..', name)
-    dataset = TUDataset(name=name, root=path, pre_transform=None,)
-    if not hasattr(dataset, 'x'):
-        max_degree = 0
-        degs = []
-        for data in dataset:
-            degs += [degree(data.edge_index[0], dtype=torch.long)]
-        max_degree = max(max_degree, degs[-1].max().item())
-        if no_feat_replacement == 'constant':
-            dataset.transform = FilterConstant(10)
-        elif no_feat_replacement == 'degree':
-            T.OneHotDegree(max_degree)
+    if name == "IMDB-BINARY":
+        dataset = TUDataset(name=name, root=path, transform= T.Compose([NodeDegrees(), OneHotDegreeFeatures()]),use_node_attr=False,)
+    # else:
+
+    # if not hasattr(dataset, 'x'):
+    #     max_degree = 0
+    #     degs = []
+    #     for data in dataset:
+    #         degs += [degree(data.edge_index[0], dtype=torch.long)]
+    #     max_degree = max(max_degree, degs[-1].max().item())
+    #     if no_feat_replacement == 'constant':
+    #         dataset.transform = FilterConstant(10)
+    #     elif no_feat_replacement == 'degree':
+    #         dataset.transform = T.OneHotDegree(max_degree)
     if args.lifting != "diffLifting":
         return lift_topology(dataset, args)
     return dataset
