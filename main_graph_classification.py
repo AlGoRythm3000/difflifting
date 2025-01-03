@@ -102,10 +102,10 @@ if __name__ == '__main__':
                 device
             )
             mlflow.log_metric('train loss',torch.tensor(train_loss).mean().item(), step=epoch)
-            mlflow.log_metric('val loss', val_loss.item(), step=epoch)
-            mlflow.log_metric('test loss', test_loss.item(), step=epoch)
-            mlflow.log_metric('test acc', test_acc.item(), step=epoch)
-            mlflow.log_metric('val acc', test_acc.item(), step=epoch)
+            mlflow.log_metric('val loss', val_loss, step=epoch)
+            mlflow.log_metric('test loss', test_loss, step=epoch)
+            mlflow.log_metric('test acc', test_acc, step=epoch)
+            mlflow.log_metric('val acc', test_acc, step=epoch)
             mlflow.pytorch.autolog()
             # for name, param in model.named_parameters():
             #     print(f"{name} gradient: {param.grad}")
