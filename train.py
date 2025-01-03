@@ -25,6 +25,7 @@ def evaluate(model, loader, loss_fn, device, evaluator=None):
         out = model(batch)
         loss = loss_fn(out.squeeze(), batch.y.squeeze()) / batch.num_graphs
         total_loss += loss.item()
+        accuracy= -total_loss
         if not isinstance(loss_fn, torch.nn.L1Loss):
             total_correct += (out.argmax(dim=-1) == batch.y.squeeze()).sum().item()
     accuracy = total_correct / loader.dataset.len()
