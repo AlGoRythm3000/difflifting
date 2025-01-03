@@ -48,7 +48,11 @@ class TNN(nn.Module):
 
             
             x = self.base_model(data.x_0, data.incidence_1)
-        
+            
+            model_out["x_0"] = x[0]
+            model_out["x_1"] = x[1]
+
+            return model_out
 
 
         model_out["x_0"] = x[0]

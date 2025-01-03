@@ -59,12 +59,12 @@ if __name__ == '__main__':
     test_accuracies = []
     val_losses = []
     val_accuracies = []
-
+    epochs_no_improve=0
     print(
         "Number of parameters:",
         sum(p.numel() for p in model.parameters() if p.requires_grad),
     )
-    # summary(model)
+    summary(model)
     scheduler = ReduceLROnPlateau(
         optimizer,
         mode="max",
@@ -72,9 +72,9 @@ if __name__ == '__main__':
         min_lr=1e-6,
         patience=args.lr_decay_patience,
     )
-    loss_fn = torch.nn.CrossEntropyLoss()
+    loss_fn = torch.nn.CrossEntropyLoss(reduction='sum')
     if args.dataset == "ZINC":
-        loss_fn = torch.nn.L1Loss()
+        loss_fn = torch.nn.L1Loss(reduction='sum')
     evaluator = None
     if args.dataset == "ogbg-molhiv":
         evaluator = Evaluator(args.dataset)
@@ -102,10 +102,10 @@ if __name__ == '__main__':
                 device
             )
             mlflow.log_metric('train loss',torch.tensor(train_loss).mean().item(), step=epoch)
-            mlflow.log_metric('val loss', val_loss, step=epoch)
-            mlflow.log_metric('test loss', test_loss, step=epoch)
-            mlflow.log_metric('test acc', test_acc, step=epoch)
-            mlflow.log_metric('val acc', test_acc, step=epoch)
+            mlflow.log_metric('val loss', val_loss.item(), step=epoch)
+            mlflow.log_metric('test loss', test_loss.item(), step=epoch)
+            mlflow.log_metric('test acc', test_acc.item(), step=epoch)
+            mlflow.log_metric('val acc', test_acc.item(), step=epoch)
             mlflow.pytorch.autolog()
             # for name, param in model.named_parameters():
             #     print(f"{name} gradient: {param.grad}")
@@ -117,7 +117,6 @@ if __name__ == '__main__':
 
             train_losses.append(torch.tensor(train_loss).mean())  # train losses
 
-            # if (epoch - 1) % args.interval == 0:
             print(
                 f"{epoch:3d}: Train Loss: {torch.tensor(train_loss).mean():.3f},"
                 f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
