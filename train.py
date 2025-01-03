@@ -25,10 +25,12 @@ def evaluate(model, loader, loss_fn, device, evaluator=None):
         out = model(batch)
         loss = loss_fn(out.squeeze(), batch.y.squeeze()) / batch.num_graphs
         total_loss += loss.item()
-        accuracy= -total_loss
         if not isinstance(loss_fn, torch.nn.L1Loss):
             total_correct += (out.argmax(dim=-1) == batch.y.squeeze()).sum().item()
-    accuracy = total_correct / loader.dataset.len()
+    if isinstance(loss_fn, torch.nn.CrossEntropyLoss):
+        accuracy = total_correct / loader.dataset.len()
+    else:
+        accuracy = -total_loss / len(loader)
     if evaluator is not None:
         accuracy = evaluator.eval({"y_pred": out[:, 1].unsqueeze(-1), "y_true": batch.y})[evaluator.eval_metric]
     return total_loss / len(loader), accuracy
