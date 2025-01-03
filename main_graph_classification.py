@@ -44,7 +44,6 @@ if __name__ == '__main__':
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    criterion = nn.CrossEntropyLoss()
 
 
 
@@ -65,7 +64,7 @@ if __name__ == '__main__':
         "Number of parameters:",
         sum(p.numel() for p in model.parameters() if p.requires_grad),
     )
-    summary(model)
+    # summary(model)
     scheduler = ReduceLROnPlateau(
         optimizer,
         mode="max",
@@ -75,7 +74,7 @@ if __name__ == '__main__':
     )
     loss_fn = torch.nn.CrossEntropyLoss()
     if args.dataset == "ZINC":
-        loss_fn = torch.nn.L1Loss(reduction='mean')
+        loss_fn = torch.nn.L1Loss()
     evaluator = None
     if args.dataset == "ogbg-molhiv":
         evaluator = Evaluator(args.dataset)
@@ -103,10 +102,10 @@ if __name__ == '__main__':
                 device
             )
             mlflow.log_metric('train loss',torch.tensor(train_loss).mean().item(), step=epoch)
-            mlflow.log_metric('val loss', val_loss.item(), step=epoch)
-            mlflow.log_metric('test loss', test_loss.item(), step=epoch)
-            mlflow.log_metric('test acc', test_acc.item(), step=epoch)
-            mlflow.log_metric('val acc', test_acc.item(), step=epoch)
+            mlflow.log_metric('val loss', val_loss, step=epoch)
+            mlflow.log_metric('test loss', test_loss, step=epoch)
+            mlflow.log_metric('test acc', test_acc, step=epoch)
+            mlflow.log_metric('val acc', test_acc, step=epoch)
             mlflow.pytorch.autolog()
             # for name, param in model.named_parameters():
             #     print(f"{name} gradient: {param.grad}")

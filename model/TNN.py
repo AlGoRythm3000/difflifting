@@ -53,7 +53,7 @@ class TNN(nn.Module):
 
         model_out["x_0"] = x[0]
         model_out["x_1"] = x[1]
-        model_out["x_2"] = x[2]
+        # model_out["x_2"] = x[2]
         return model_out
     
 

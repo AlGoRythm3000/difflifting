@@ -89,7 +89,7 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     from torch.utils.data import DataLoader
 
     train_loader = DataloadDataset(
-        train_set
+        train_set,
     )
     train_loader = DataLoader(
         train_loader,
@@ -229,16 +229,6 @@ def tu_datasets(name,args, no_feat_replacement='constant'):
         dataset = TUDataset(name=name, root=path,
                             use_node_attr=False, )
 
-    # if not hasattr(dataset, 'x'):
-    #     max_degree = 0
-    #     degs = []
-    #     for data in dataset:
-    #         degs += [degree(data.edge_index[0], dtype=torch.long)]
-    #     max_degree = max(max_degree, degs[-1].max().item())
-    #     if no_feat_replacement == 'constant':
-    #         dataset.transform = FilterConstant(10)
-    #     elif no_feat_replacement == 'degree':
-    #         dataset.transform = T.OneHotDegree(max_degree)
     if args.lifting != "diffLifting":
         return lift_topology(dataset, args)
     return dataset
