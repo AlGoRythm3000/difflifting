@@ -11,6 +11,7 @@ from torch_geometric.datasets import KarateClub
 from torch_geometric.datasets import Planetoid
 from torch_geometric.loader import DataLoader
 
+from preprocessing.equal_gauss_features.equal_gaus_features import EqualGausFeatures
 from preprocessing.one_hot_degree_features.transforms import OneHotDegreeFeatures, NodeDegrees
 from tools.collate import collate_fn
 from tools.lifting.clique_lifting import SimplicialCliqueLifting
@@ -225,6 +226,9 @@ def tu_datasets(name,args, no_feat_replacement='constant'):
     path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, name)
     if name == "IMDB-BINARY":
         dataset = TUDataset(name=name, root=path, transform= T.Compose([NodeDegrees(), OneHotDegreeFeatures()]),use_node_attr=False,)
+    elif name == "REDDIT-BINARY":
+        dataset = TUDataset(name=name, root=path, transform= T.Compose([EqualGausFeatures(**{"mean": 0, "std": 0.1, "num_features": 10})]),use_node_attr=False,)
+
     else:
         dataset = TUDataset(name=name, root=path,
                             use_node_attr=False, )
