@@ -89,7 +89,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--logdir", type=str, default="results/", help="Log directory")
     parser.add_argument("--hidden_dim", type=int, default=32)
     parser.add_argument("--depth", type=int, default=2)
-    parser.add_argument("--no_redout", type=bool, default=False)
+    parser.add_argument("--no_redout", type=bool, default=True)
     parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
