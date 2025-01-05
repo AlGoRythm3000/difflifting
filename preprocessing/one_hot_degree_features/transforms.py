@@ -113,7 +113,7 @@ class OneHotDegreeFeatures(torch_geometric.transforms.BaseTransform):
     ) -> None:
         super().__init__()
         self.type = max_degree
-        self.max_degree = 135
+        self.max_degree = max_degree
         self.degrees_field = degrees_fields
         self.features_field = features_fields
         self.cat = cat

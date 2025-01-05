@@ -25,8 +25,9 @@ def evaluate(model, loader, loss_fn, device, evaluator=None):
     for batch in loader:
         batch = batch.to(device)
         out = model(batch)
-        y_pred.append(out[:, 1].unsqueeze(-1))
-        y_true.append(batch.y)
+        if evaluator is not None:
+            y_pred.append(out[:, 1].unsqueeze(-1))
+            y_true.append(batch.y)
 
         loss = loss_fn(out.squeeze(), batch.y.squeeze()) / batch.num_graphs
         total_loss += loss.item()

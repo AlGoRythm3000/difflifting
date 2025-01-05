@@ -165,8 +165,9 @@ def get_graph_classification_dataset(dataset: str, batch_size, args, device, see
 
     elif dataset == "ZINC":
         train_set, val_set, test_set = get_zinc(args)
+        num_nodes_features = train_set.x.shape[1]
         dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
-        return  dataloaders, train_set.num_node_features, 1
+        return  dataloaders, num_nodes_features, 1
     else:
         dataset = tu_datasets(dataset, args)
         train_set, val_set, test_set = data_split(dataset, seed)
@@ -200,7 +201,7 @@ def get_zinc(args):
     """
     path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, "ZINC")
     train_data = ZINC(path, subset=True, split="train")
-    data_val = ZINC(path, subset=True, split="val")
+    data_val = ZINC(path, subset=True, split="val" )
     data_test = ZINC(path, subset=True, split="test")
 
     if args.lifting != "diffLifting":
