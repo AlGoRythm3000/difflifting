@@ -4,6 +4,7 @@ import torch
 from ogb.graphproppred import PygGraphPropPredDataset
 from torch_geometric.data import Batch
 from sklearn.model_selection import StratifiedShuffleSplit
+from torch_geometric.transforms import AddRandomWalkPE
 from torch_geometric.utils import degree
 from torch_geometric.datasets import ZINC, TUDataset
 import torch_geometric.transforms as T
@@ -160,16 +161,24 @@ def get_graph_classification_dataset(dataset: str, batch_size, args, device, see
     """
     if dataset.startswith("ogbg"):
         dataset = get_ogb_data(dataset)
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
         train_loader, val_loader, test_loader = divide_train_val_test_split(dataset, args)
         dataloaders = (train_loader, val_loader, test_loader)
 
     elif dataset == "ZINC":
         train_set, val_set, test_set = get_zinc(args)
+        if args.gnn == "GPS":
+            train_set = add_positional_encoding(args, train_set)
+            val_set = add_positional_encoding(args, val_set)
+            test_set = add_positional_encoding(args, test_set)
         num_nodes_features = train_set.x.shape[1]
         dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
         return  dataloaders, num_nodes_features, 1
     else:
         dataset = tu_datasets(dataset, args)
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
         train_set, val_set, test_set = data_split(dataset, seed)
         dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
 
@@ -341,6 +350,15 @@ def choose_dataset(args, device):
         return get_node_prediction_dataset(args.dataset)
     else:
         return get_graph_classification_dataset(args.dataset, args.batch_size, args, device)
+
+def add_positional_encoding(args, dataset):
+    positional_encoder = AddRandomWalkPE(walk_length=args.positional_walking_len, attr_name='pe')
+    graph_with_positional_encoder = []
+    for graph in dataset:
+        graph_with_positional_encoder.append(positional_encoder(graph))
+    dataset.data, dataset.slices = dataset.collate(graph_with_positional_encoder)
+    return dataset
+
 
 
 import torch_geometric

@@ -4,16 +4,17 @@ import torch_geometric.nn as pyg_nn
 import torch_geometric.utils as pyg_utils
 import torch_sparse
 from torch_geometric.data import Batch
-from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn import global_mean_pool, DeepSetsAggregation
 import torch.nn.functional as F
 from torch_geometric.utils import degree
 
 
 import torch_geometric
 
+from layers.deepset import DeepSetLayer
 from layers.diff_lifting import DiffLifting
 from layers.encoders.all_cell_features_encoders import AllCellFeatureEncoder
-from model.GNN import GNN
+from model.GNN import GIN, GPS
 from model.TNN import TNN
 from torch_geometric.transforms import BaseTransform
 
@@ -25,7 +26,6 @@ from torch_geometric.nn import global_mean_pool
 import torch.nn.functional as F
 
 # from layers.diff_lifting import DiffLifting
-from model.GNN import GNN
 from model.TNN import TNN
 from torch_geometric.transforms import BaseTransform
 
@@ -37,9 +37,12 @@ from tools.redout import DirectReadout
 
 class TNN_KNN_MLP_G(nn.Module):
 
-    def __init__(self,in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum",device="cpu", tnn_type= "SCN2", num_layers=4):
+    def __init__(self,in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum",
+                 device="cpu", tnn_type= "SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64):
         super(TNN_KNN_MLP_G, self).__init__()
         self.k = k
+
+
         self.triangle_count = 0  # Add this to track triangles
         self.diff_lifting = diff_lifting
         self.tnn_type = tnn_type
@@ -47,11 +50,17 @@ class TNN_KNN_MLP_G(nn.Module):
         #self.lin= nn.Linear(tnn_out_feat, num_classes)
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim, proj_dropout=0.5)
         if diff_lifting:
-            self.gnn = GNN(in_channels, hidden_dim, hidden_dim)
+            self.deep_set_layers = []
+            for i in range(k):
+                self.deep_set_layers.append(DeepSetLayer(in_channels, hidden_dim))
+            if args.gnn == "GIN":
+                self.gnn = GIN(in_channels, hidden_dim, embedding_dim, num_layers_gnn).to(device)
+            elif args.gnn == "GPS":
+                self.gnn = GPS(in_channels, hidden_dim, args.positional_walking_len , num_layers_gnn).to(device)
             self.pool = global_mean_pool
             self.k = k
             self.mlp = nn.Sequential(
-                nn.Linear(hidden_dim, 2 * hidden_dim),
+                nn.Linear(embedding_dim, 2 * hidden_dim),
                 nn.ReLU(),
                 nn.Linear(2 * hidden_dim, hidden_dim),
                 nn.ReLU(),
@@ -65,7 +74,7 @@ class TNN_KNN_MLP_G(nn.Module):
             model_type=tnn_type,  # choose TNN model
             in_channels=hidden_dim,
             hidden_channels=hidden_dim,
-            n_layers=num_layers,
+            n_layers=num_layers_tnn,
             device=device
         )
         if args.no_readout:
@@ -118,7 +127,7 @@ class TNN_KNN_MLP_G(nn.Module):
         if self.diff_lifting:
             x, edge_index = data.x.float(), data.edge_index
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
-            embeddings = self.gnn(x, edge_index)
+            embeddings = self.gnn(data)
 
             mask_knn= torch.nn.functional.one_hot(data.batch_0,num_classes=vertex_slice.shape[0]-1)
 
