@@ -68,7 +68,7 @@ class TNN_KNN_MLP_G(nn.Module):
             n_layers=num_layers,
             device=device
         )
-        if args.no_redout:
+        if args.no_readout:
             self.readout = DirectReadout(**{
                 "readout_name": "DirectReadout",
                 "task_level": "graph",
