@@ -21,7 +21,7 @@ class TNN(nn.Module):
             self.base_model =  CCXN(in_channels, in_channels, in_channels, n_layers=n_layers).to(device)
         elif model_type == "UniGCNII":
             self.base_model =  UniGCNII(in_channels, in_channels).to(device)
-        elif model_type == "AllsetTransformer":
+        elif model_type == "AST":
             self.base_model =  AllSetTransformer(in_channels, in_channels,  n_layers=n_layers, n_heads=4).to(device)
         
         print("Type of base_model:", type(self.base_model))
@@ -48,7 +48,7 @@ class TNN(nn.Module):
                             data.adjacency_0,
                             data.incidence_2.T)
 
-        elif self.model_type == "AllsetTransformer":
+        elif self.model_type == "AST":
             x = self.base_model(data.x_0, data.incidence_1)
 
             model_out["x_0"] = x[0]
