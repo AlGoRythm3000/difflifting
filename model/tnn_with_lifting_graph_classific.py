@@ -12,7 +12,6 @@ from torch_geometric.utils import degree
 import torch_geometric
 
 from layers.deepset import DeepSetLayer
-from layers.diff_lifting import DiffLifting
 from layers.encoders.all_cell_features_encoders import AllCellFeatureEncoder
 from model.GNN import GIN, GPS
 from model.TNN import TNN
@@ -165,7 +164,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
             data_for_lifting={}
 
-            if self.tnn_type == "UniGCNII":
+            if self.tnn_type == "UniGCNII" or self.tnn_type=="AllsetTransformer":
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
                 data_for_lifting = {
                     "x_0": x.float(),  # Node features
@@ -184,7 +183,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
             data.x_0 = x.float()
 
-            if self.tnn_type != "UniGCNII":
+            if self.tnn_type != "UniGCNII" and self.tnn_type != "AllsetTransformer":
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
 
