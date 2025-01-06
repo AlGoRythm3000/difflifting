@@ -83,7 +83,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positional_encoder_dim", type=int, default=4)
     parser.add_argument("--positional_walking_len", type=int, default=20)
     parser.add_argument("--depth", type=int, default=2)
-    parser.add_argument("--no_readout", action='store_false')
+    parser.add_argument("--no_readout", action='store_true')
     parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
