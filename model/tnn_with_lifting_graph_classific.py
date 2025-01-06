@@ -53,7 +53,7 @@ class TNN_KNN_MLP_G(nn.Module):
             for i in range(k):
                 self.deep_set_layers.append(DeepSetLayer(in_channels, hidden_dim))
             if args.gnn == "GIN":
-                self.gnn = GIN(in_channels, hidden_dim, embedding_dim, num_layers_gnn).to(device)
+                self.gnn = GIN(in_channels, embedding_dim, embedding_dim, num_layers_gnn).to(device)
             elif args.gnn == "GPS":
                 self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len , num_layers_gnn).to(device)
             self.pool = global_mean_pool

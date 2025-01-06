@@ -74,7 +74,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
     )
-    parser.add_argument("--early_stop_patience", type=int, default=40)
+    parser.add_argument("--early_stop_patience", type=int, default=50)
     parser.add_argument("--lr_decay_patience", type=int, default=10)
     parser.add_argument("--logdir", type=str, default="results/", help="Log directory")
     parser.add_argument("--hidden_dim", type=int, default=32)
