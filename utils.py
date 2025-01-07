@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="NCI1",
+        default="IMDB-BINARY",
         choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY","REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
@@ -77,8 +77,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--early_stop_patience", type=int, default=50)
     parser.add_argument("--lr_decay_patience", type=int, default=10)
     parser.add_argument("--logdir", type=str, default="results/", help="Log directory")
-    parser.add_argument("--hidden_dim", type=int, default=32)
-    parser.add_argument("--gnn_embedding_dim", type=int, default=32)
+    parser.add_argument("--hidden_dim", type=int, default=64)
+    parser.add_argument("--gnn_embedding_dim", type=int, default=128)
     parser.add_argument("--graph_transformer_n_heads", type=int, default=4)
     parser.add_argument("--positional_encoder_dim", type=int, default=4)
     parser.add_argument("--positional_walking_len", type=int, default=20)
