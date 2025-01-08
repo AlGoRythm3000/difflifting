@@ -83,4 +83,5 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--global_pooling", type=str, default="mean", choices=["sum", "mean"]
     )
+    parser.add_argument("--max_cell_length", type=int, default=None, help="Maximum cycle length for CellCycleLifting.")
     return parser.parse_args()

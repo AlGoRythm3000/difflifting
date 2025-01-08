@@ -238,7 +238,11 @@ def lift_topology(dataset, args):
         data_list = []
         max_dim = 0
         for i, d in enumerate(dataset):
-            lift_fn = LIFTINGS[args.lifting]()
+            lift_fn_cls = LIFTINGS[args.lifting]
+            if args.lifting == "CellCycleLifting":
+                lift_fn = lift_fn_cls(max_cell_length=args.max_cell_length)
+            else:
+                lift_fn = lift_fn_cls()
             new_data = lift_fn(d)
             for key, value in new_data.items():
                 if key.startswith("hodge_laplacian_"):
