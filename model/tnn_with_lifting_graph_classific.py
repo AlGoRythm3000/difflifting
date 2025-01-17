@@ -49,9 +49,9 @@ class TNN_KNN_MLP_G(nn.Module):
         #self.lin= nn.Linear(tnn_out_feat, num_classes)
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim, proj_dropout=0.5)
         if diff_lifting:
-            self.deep_set_layers = []
-            for i in range(k):
-                self.deep_set_layers.append(DeepSetLayer(in_channels, hidden_dim))
+            # self.deep_set_layers = []
+            # for i in range(k):
+            #     self.deep_set_layers.append(DeepSetLayer(in_channels, hidden_dim))
             if args.gnn == "GIN":
                 self.gnn = GIN(in_channels, embedding_dim, embedding_dim, num_layers_gnn).to(device)
             elif args.gnn == "GPS":
@@ -135,43 +135,79 @@ class TNN_KNN_MLP_G(nn.Module):
             distances = torch.cdist(embeddings, embeddings) # Find if there is cdist without sqrt
 
             distances= mask_knn * distances + (1-mask_knn)*1e7
-            knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
-
-            pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
-
-            include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
-            inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
-            straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
-            
-            num_edges = edge_index_undirected.size(1)
-
-            incidence_matrix_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
-
-            for idx, edge in enumerate(edge_index_undirected.T):
-                incidence_matrix_1[edge[0], idx] = 1
-                incidence_matrix_1[edge[1], idx] = 1
-
-            num_nodes= data.x.size(0)
-
-
-
-            mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
-
-            node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
-
-            incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
-            incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
-
-            data_for_lifting={}
 
             if self.tnn_type == "UniGCNII" or self.tnn_type=="AST":
+                knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
+
+                pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
+
+                include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
+                inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
+                straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
+                
+                num_edges = edge_index_undirected.size(1)
+
+                incidence_matrix_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
+
+                for idx, edge in enumerate(edge_index_undirected.T):
+                    incidence_matrix_1[edge[0], idx] = 1
+                    incidence_matrix_1[edge[1], idx] = 1
+
+                num_nodes= data.x.size(0)
+
+
+
+                mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
+
+                node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
+
+                incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
+                incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
+
+                data_for_lifting={}
+
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
                 data_for_lifting = {
                     "x_0": x.float(),  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                 }
+                
+                lifted_data = self.projection_sum(data_for_lifting)
+
+                data.x_0 = x.float()
+
+                data.incidence_1 = data_for_lifting.get("incidence_1")
+                data.incidence_1= torch.Tensor(data.incidence_1).to_sparse_coo()
+            
 
             else:
+                knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
+
+                pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
+
+                include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
+                inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
+                straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
+                
+                num_edges = edge_index_undirected.size(1)
+
+                incidence_matrix_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
+
+                for idx, edge in enumerate(edge_index_undirected.T):
+                    incidence_matrix_1[edge[0], idx] = 1
+                    incidence_matrix_1[edge[1], idx] = 1
+
+                num_nodes= data.x.size(0)
+
+                mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
+
+                node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
+
+                incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
+                incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
+
+                data_for_lifting={}
+
                 data_for_lifting = {
                     "x_0": x.float(),  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
@@ -179,16 +215,12 @@ class TNN_KNN_MLP_G(nn.Module):
                 }
 
 
-            lifted_data = self.projection_sum(data_for_lifting)
+                lifted_data = self.projection_sum(data_for_lifting)
 
-            data.x_0 = x.float()
+                data.x_0 = x.float()
 
-            if self.tnn_type != "UniGCNII" and self.tnn_type != "AST":
+            
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
-
-
-            data.incidence_1 = data_for_lifting.get("incidence_1")
-            data.incidence_1= torch.Tensor(data.incidence_1).to_sparse_coo()
 
 
         data = self.feature_encoder(data)
