@@ -39,6 +39,101 @@ from tools.redout import PropagateSignalDown
 from tools.redout import DirectReadout
 
 
+class AttentionLifting(BaseTransform):
+    """Lift node features to hyperedge features using attention mechanism."""
+    
+    def __init__(self, feature_dim=None):
+        super().__init__()
+        self.W1 = torch.nn.Parameter(torch.randn(feature_dim, feature_dim) if feature_dim else torch.randn(64, 64))
+        self.W2 = torch.nn.Parameter(torch.randn(feature_dim, feature_dim) if feature_dim else torch.randn(64, 64))
+        self.W3 = torch.nn.Parameter(torch.randn(feature_dim, feature_dim) if feature_dim else torch.randn(64, 64))
+        self.k_v = torch.nn.Parameter(torch.tensor(2.0))  # Automatically requires_grad=True
+        def print_grad_W1(grad):
+            print("Gradient for W1:", grad)
+
+        def print_grad_W2(grad):
+            print("Gradient for W2:", grad)
+
+        def print_grad_W3(grad):
+            print("Gradient for W3:", grad)
+
+        def print_grad_kv(grad):
+            print("Gradient for k_v:", grad)
+
+        # Register hooks for monitoring gradients
+        self.W1.register_hook(print_grad_W1)
+        self.W2.register_hook(print_grad_W2)
+        self.W3.register_hook(print_grad_W3)
+        self.k_v.register_hook(print_grad_kv)
+        # Deep Set for order-invariant aggregation
+        self.phi = torch.nn.Sequential(
+            torch.nn.Linear(feature_dim if feature_dim else 64, feature_dim*2 if feature_dim else 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(feature_dim*2 if feature_dim else 128, feature_dim if feature_dim else 64)
+        )
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}()"
+
+    def lift_features(self, data):
+        """Project node features to higher-order structures using attention."""
+        keys = sorted(
+            [key.split("_")[1] for key in data if ("incidence" in key and "-" not in key)]
+        )
+        
+        self.k_v = torch.nn.Parameter(torch.tensor(2.0))  # Automatically requires_grad=True
+
+        for elem in keys:
+            if f"x_{elem}" not in data:
+                idx_to_project = 0 if elem == "hyperedges" else int(elem) - 1
+                incidence = data["incidence_" + elem]
+                
+                # Get nodes involved in each structure
+                node_features = data[f"x_{idx_to_project}"]
+                
+                # For each structure (edge/hyperedge), get its incident nodes
+                structures = []
+                for i in range(incidence.shape[1]):
+                    nodes = torch.where(incidence[:, i] != 0)[0]
+                    if len(nodes) > 0:
+                        structures.append((i, nodes))
+                
+                # Compute lifted features for each structure
+                lifted_features = []
+                for struct_idx, nodes in structures:
+                    features = node_features[nodes]
+                    
+                    # Compute attention scores using the gradient-preserving k_v
+                    scaling_factor = torch.sqrt(self.k_v)
+                    query = torch.matmul(features, self.W1.t())
+                    key = torch.matmul(features, self.W2.t())
+                    scores = torch.matmul(query, key.t()) / scaling_factor
+                    
+                    # Apply attention
+                    attention = torch.softmax(scores, dim=-1)
+                    values = torch.matmul(features, self.W3.t())
+                    messages = torch.matmul(attention, values)
+                    
+                    # Apply order-invariant aggregation
+                    structure_feature = self.phi(messages.mean(dim=0, keepdim=True))
+                    lifted_features.append(structure_feature)
+                
+                # Combine all lifted features
+                if lifted_features:
+                    data["x_" + elem] = torch.cat(lifted_features, dim=0)
+                else:
+                    data["x_" + elem] = torch.zeros(
+                        (incidence.shape[1], node_features.shape[1]), 
+                        device=node_features.device
+                    )
+        
+        return data
+
+    def forward(self, data):
+        """Apply the lifting to the input data."""
+        data = self.lift_features(data)
+        return data
+
 
 
 class TNN_KNN_MLP_G(nn.Module):
@@ -74,22 +169,23 @@ class TNN_KNN_MLP_G(nn.Module):
                 nn.Dropout(0.5),
                 nn.Linear(hidden_dim, 1),
             )
-            self.mlp_cell  = nn.Sequential(
-                nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
-                nn.ReLU(),
-                nn.Linear(2 * hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(hidden_dim, k),  # Output k features
-            )
-            self.mlp_cell2 = nn.Sequential(
-                nn.Linear(128, 2 * hidden_dim),  # Change input dimension to 128
-                nn.ReLU(),
-                nn.Linear(2 * hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(hidden_dim, 1),  # Output: probability per cycle
-            )
+            if tnn_type not in ["UniGCNII", "AST"]:
+                self.mlp_cell  = nn.Sequential(
+                    nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
+                    nn.ReLU(),
+                    nn.Linear(2 * hidden_dim, hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(0.5),
+                    nn.Linear(hidden_dim, k),  # Output k features
+                )
+                self.mlp_cell2 = nn.Sequential(
+                    nn.Linear(128, 2 * hidden_dim),  # Change input dimension to 128
+                    nn.ReLU(),
+                    nn.Linear(2 * hidden_dim, hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(0.5),
+                    nn.Linear(hidden_dim, 1),  # Output: probability per cycle
+                )
             self.k_mlp = torch.nn.Sequential(
                 torch.nn.Linear(embedding_dim, 64),
                 torch.nn.ReLU(),
@@ -99,6 +195,8 @@ class TNN_KNN_MLP_G(nn.Module):
 
             self.triangle_count = 0
             self.projection_sum = ProjectionSum()
+
+            self.attention_lift = AttentionLifting(feature_dim=in_channels)
 
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
@@ -159,18 +257,36 @@ class TNN_KNN_MLP_G(nn.Module):
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
             embeddings = self.gnn(data)
 
+                   # Keep gradient through mean operation
+            embedding_mean = embeddings.mean(dim=0, keepdim=True)
+
+            print("embeddings requires_grad:", embeddings.requires_grad)
+
+
+            embedding_mean.requires_grad_()
+
             # Generate k distribution from embeddings
-            k_logits = self.k_mlp(embeddings.mean(dim=0, keepdim=True))  # Shape: [1, k_max - k_min + 1]
+            k_logits = self.k_mlp(embedding_mean)  # Shape: [1, k_max - k_min + 1]
+
+            # Debug: Check if k_logits requires gradients
+            if not k_logits.requires_grad:
+                print("k_logits does not require gradients. Check computation graph.")
+                print("Embedding mean requires_grad:", embedding_mean.requires_grad)
+                print("k_mlp parameters:", [p.requires_grad for p in self.k_mlp.parameters()])
+
+            
+            k_logits.register_hook(lambda grad: print("Gradient for k_logits:", grad))
             
             # Use PyTorch's gumbel_softmax for differentiable sampling
-            k_sample = torch.nn.functional.gumbel_softmax(k_logits, tau=1.0, hard=True, dim=-1)
-            
-            # Convert one-hot to scalar k value
-            k_values = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device)
-            k = (k_sample * k_values).sum()  # Weighted sum gives us our k value
-            
-            # Store k for topk operation
-            self.k = max(2, int(k.item()))
+            k_sample = torch.nn.functional.gumbel_softmax(k_logits, tau=1.0, hard=False, dim=-1)
+            k_sample.register_hook(lambda grad: print("Gradient for k_sample:", grad))
+
+            k_values = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=torch.float)
+            k_continuous = (k_sample * k_values).sum()  # Weighted sum for continuous k
+            k_continuous.register_hook(lambda grad: print("Gradient for k_continuous:", grad))
+
+            self.k = k = max(self.k_min, int(k_continuous.item()))  # Ensure integer k
+
 
             mask_knn= torch.nn.functional.one_hot(data.batch_0,num_classes=vertex_slice.shape[0]-1)
 
@@ -212,12 +328,15 @@ class TNN_KNN_MLP_G(nn.Module):
                 data_for_lifting={}
 
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
+
                 data_for_lifting = {
-                    "x_0": x.float(),  # Node features
-                    "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
+                    "x_0": x.float(),
+                    "incidence_1": incidence_matrix_1,
+                    "k_v": k_continuous  # Pass the continuous k value
                 }
+            
                 print("OUUUUUUU\n")
-                lifted_data = self.projection_sum(data_for_lifting)
+                lifted_data = self.attention_lift(data_for_lifting)
 
                 data.x_0 = x.float()
 
