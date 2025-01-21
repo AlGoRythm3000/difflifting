@@ -50,32 +50,41 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
-    parser.add_argument("--gnn", type=str, default="gin", choices=["gcn", "gin", "linear"])
-    parser.add_argument("--tnn", type=str, default="SCN2", choices=["CWN", "SCN2", "CXN"])
+    parser.add_argument("--gnn", type=str, default="GIN", choices=["GIN", "GPS"])
+    parser.add_argument("--tnn", type=str, default="UniGCNII", choices=["CWN", "SCN2", "CXN", "UniGCNII", "AST"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="PROTEINS",
-        choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
+        default="IMDB-BINARY",
+        choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY","REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
         "--lifting",
         type=str,
         default="diffLifting",
-        choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting"],
+        choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting", "HypergraphKHopLifting"],
     )
-    parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
-    parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight Decay.")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate.")
+    parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size.")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
+    parser.add_argument("--num_layers", type=int, default=1, help="Number of tnn layers.")
+    parser.add_argument("--num_layers_gnn", type=int, default=1, help="Number of gnn layers ")
+
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
     )
-    parser.add_argument("--early_stop_patience", type=int, default=40)
+    parser.add_argument("--early_stop_patience", type=int, default=50)
     parser.add_argument("--lr_decay_patience", type=int, default=10)
     parser.add_argument("--logdir", type=str, default="results/", help="Log directory")
     parser.add_argument("--hidden_dim", type=int, default=64)
+    parser.add_argument("--gnn_embedding_dim", type=int, default=128)
+    parser.add_argument("--graph_transformer_n_heads", type=int, default=4)
+    parser.add_argument("--positional_encoder_dim", type=int, default=4)
+    parser.add_argument("--positional_walking_len", type=int, default=20)
     parser.add_argument("--depth", type=int, default=2)
+    parser.add_argument("--no_readout", action='store_false')
+    parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
         "--deepset_aggr_type", type=str, default="sum", choices=["sum", "cat", "mean"]
@@ -83,5 +92,4 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--global_pooling", type=str, default="mean", choices=["sum", "mean"]
     )
-    parser.add_argument("--max_cell_length", type=int, default=None, help="Maximum cycle length for CellCycleLifting.")
     return parser.parse_args()

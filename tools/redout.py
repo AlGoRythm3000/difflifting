@@ -87,6 +87,7 @@ class AbstractZeroCellReadOut(torch.nn.Module):
         """
         if self.task_level == "graph":
             x = scatter(x, batch, dim=0, reduce=self.pooling_type)
+            #print("PASSOOUUUU\n")
 
         return self.linear(x)
 
@@ -170,3 +171,43 @@ class PropagateSignalDown(AbstractZeroCellReadOut):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(num_cell_dimensions={len(self.dimensions)}, hidden_dim={self.hidden_dim}, readout_name={self.name}"
+
+
+class DirectReadout(AbstractZeroCellReadOut):
+    r"""
+    Direct readout layer that skips propagation through dimensions.
+
+    This readout layer computes logits directly from the `x_0` embeddings,
+    bypassing signal propagation through higher-order cells.
+
+    Parameters
+    ----------
+    **kwargs : dict
+        Additional keyword arguments, including hidden_dim, out_channels,
+        task_level, and pooling_type.
+    """
+    def __init__(self, **kwargs):
+        # Pass all kwargs to the parent class
+        super().__init__(**kwargs)
+
+    def forward(self, model_out: dict, batch: torch_geometric.data.Data):
+        r"""
+        Forward pass for direct readout.
+
+        Parameters
+        ----------
+        model_out : dict
+            Dictionary containing the model output.
+        batch : torch_geometric.data.Data
+            Batch object containing the batched domain data.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the updated model output.
+        """
+        # Directly use `x_0` embeddings to compute logits
+        model_out["logits"] = self.compute_logits(
+            model_out["x_0"], batch["batch_0"]
+        )
+        return model_out

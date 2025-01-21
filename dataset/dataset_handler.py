@@ -4,15 +4,20 @@ import torch
 from ogb.graphproppred import PygGraphPropPredDataset
 from torch_geometric.data import Batch
 from sklearn.model_selection import StratifiedShuffleSplit
+from torch_geometric.transforms import AddRandomWalkPE
 from torch_geometric.utils import degree
 from torch_geometric.datasets import ZINC, TUDataset
 import torch_geometric.transforms as T
 from torch_geometric.datasets import KarateClub
 from torch_geometric.datasets import Planetoid
 from torch_geometric.loader import DataLoader
+
+from preprocessing.equal_gauss_features.equal_gaus_features import EqualGausFeatures
+from preprocessing.one_hot_degree_features.transforms import OneHotDegreeFeatures, NodeDegrees
 from tools.collate import collate_fn
 from tools.lifting.clique_lifting import SimplicialCliqueLifting
 from tools.lifting.khop import SimplicialKHopLifting
+from tools.lifting.hypergraph import HypergraphKHopLifting
 from tools.lifting.neighboorhood_complex import NeighborhoodComplexLifting
 from tools.lifting.cycle_lifting import CellCycleLifting
 from tools.normalize import normalize_matrix
@@ -22,8 +27,10 @@ LIFTINGS = {
     "SimplicialCliqueLifting":SimplicialCliqueLifting,
     "NeighborhoodComplexLifting": NeighborhoodComplexLifting,
     "SimplicialKHopLifting":SimplicialKHopLifting,
-    "CellCycleLifting": CellCycleLifting
+    "CellCycleLifting": CellCycleLifting,
+    "HypergraphKHopLifting": HypergraphKHopLifting
 }
+PATH = "../DATA/DATASETS"
 
 class FilterConstant(object):
   def __init__(self, dim):
@@ -63,7 +70,7 @@ def get_ogb_data(name: str) -> PygGraphPropPredDataset:
     Returns:
         PygGraphPropPredDataset: The loaded dataset object.
     """
-    path = osp.dirname(osp.realpath(__file__))
+    path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, name)
     dataset = PygGraphPropPredDataset(name=name, root=path)
 
 
@@ -84,7 +91,7 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     from torch.utils.data import DataLoader
 
     train_loader = DataloadDataset(
-        train_set
+        train_set,
     )
     train_loader = DataLoader(
         train_loader,
@@ -97,7 +104,7 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     )
     valid_loader = DataLoader(
         valid_loader,
-        len(val_set),
+        batch_size,
         shuffle=True,
         collate_fn=collate_fn
     )
@@ -106,7 +113,7 @@ def get_data_loaders(train_set, val_set, test_set, batch_size):
     )
     test_loader = DataLoader(
         test_loader,
-        len(test_set),
+        batch_size,
         shuffle=True,
         collate_fn=collate_fn
     )
@@ -154,15 +161,24 @@ def get_graph_classification_dataset(dataset: str, batch_size, args, device, see
     """
     if dataset.startswith("ogbg"):
         dataset = get_ogb_data(dataset)
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
         train_loader, val_loader, test_loader = divide_train_val_test_split(dataset, args)
         dataloaders = (train_loader, val_loader, test_loader)
 
     elif dataset == "ZINC":
         train_set, val_set, test_set = get_zinc(args)
+        if args.gnn == "GPS":
+            train_set = add_positional_encoding(args, train_set)
+            val_set = add_positional_encoding(args, val_set)
+            test_set = add_positional_encoding(args, test_set)
+        num_nodes_features = train_set.x.shape[1]
         dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
-        return  dataloaders, train_set.num_node_features, 1
+        return  dataloaders, num_nodes_features, 1
     else:
         dataset = tu_datasets(dataset, args)
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
         train_set, val_set, test_set = data_split(dataset, seed)
         dataloaders = get_data_loaders(train_set,val_set, test_set, batch_size)
 
@@ -192,9 +208,9 @@ def get_zinc(args):
     Returns:
         tuple: A tuple containing the training, validation, and test datasets.
     """
-    path = osp.join(osp.dirname(osp.realpath(__file__)), "..", "ZINC")
+    path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, "ZINC")
     train_data = ZINC(path, subset=True, split="train")
-    data_val = ZINC(path, subset=True, split="val")
+    data_val = ZINC(path, subset=True, split="val" )
     data_test = ZINC(path, subset=True, split="test")
 
     if args.lifting != "diffLifting":
@@ -217,18 +233,16 @@ def tu_datasets(name,args, no_feat_replacement='constant'):
     Returns:
         TUDataset: The loaded dataset, potentially with transformed features.
     """
-    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', name)
-    dataset = TUDataset(name=name, root=path, pre_transform=None,)
-    if not hasattr(dataset, 'x'):
-        max_degree = 0
-        degs = []
-        for data in dataset:
-            degs += [degree(data.edge_index[0], dtype=torch.long)]
-        max_degree = max(max_degree, degs[-1].max().item())
-        if no_feat_replacement == 'constant':
-            dataset.transform = FilterConstant(10)
-        elif no_feat_replacement == 'degree':
-            T.OneHotDegree(max_degree)
+    path = osp.join(osp.dirname(osp.realpath(__file__)), PATH, name)
+    if name == "IMDB-BINARY":
+        dataset = TUDataset(name=name, root=path, transform= T.Compose([NodeDegrees(), OneHotDegreeFeatures()]),use_node_attr=False,)
+    elif name == "REDDIT-BINARY":
+        dataset = TUDataset(name=name, root=path, transform= T.Compose([EqualGausFeatures(**{"mean": 0, "std": 0.1, "num_features": 10})]),use_node_attr=False,)
+
+    else:
+        dataset = TUDataset(name=name, root=path,
+                            use_node_attr=False, )
+
     if args.lifting != "diffLifting":
         return lift_topology(dataset, args)
     return dataset
@@ -238,11 +252,7 @@ def lift_topology(dataset, args):
         data_list = []
         max_dim = 0
         for i, d in enumerate(dataset):
-            lift_fn_cls = LIFTINGS[args.lifting]
-            if args.lifting == "CellCycleLifting":
-                lift_fn = lift_fn_cls(max_cell_length=args.max_cell_length)
-            else:
-                lift_fn = lift_fn_cls()
+            lift_fn = LIFTINGS[args.lifting](signed=args.signed)
             new_data = lift_fn(d)
             for key, value in new_data.items():
                 if key.startswith("hodge_laplacian_"):
@@ -340,6 +350,15 @@ def choose_dataset(args, device):
         return get_node_prediction_dataset(args.dataset)
     else:
         return get_graph_classification_dataset(args.dataset, args.batch_size, args, device)
+
+def add_positional_encoding(args, dataset):
+    positional_encoder = AddRandomWalkPE(walk_length=args.positional_walking_len, attr_name='pe')
+    graph_with_positional_encoder = []
+    for graph in dataset:
+        graph_with_positional_encoder.append(positional_encoder(graph))
+    dataset.data, dataset.slices = dataset.collate(graph_with_positional_encoder)
+    return dataset
+
 
 
 import torch_geometric

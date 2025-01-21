@@ -4,32 +4,44 @@ from tqdm import tqdm
 
 def train(loader, model, loss_fn, optimizer, device):
     model.train()
-    train_losses = []
-    for batch in tqdm(loader):
+    total_loss = 0
+    for batch in loader:
         batch = batch.to(device)
         optimizer.zero_grad()
         out = model(batch)
-
-        loss = loss_fn(out.squeeze().float(), batch.y.squeeze())
+        loss = loss_fn(out.squeeze(), batch.y.squeeze()) / batch.num_graphs
         loss.backward()
+        for name, param in model.named_parameters():
+            if param.grad is None:
+                print(f"No gradient for {name}")
+            elif param.grad.abs().mean() < 1e-10:
+                print(f"Near-zero gradient for {name}")
         optimizer.step()
-        train_losses.append(loss.item())
-    return train_losses
+        total_loss += loss.item()
+    return total_loss / len(loader)
 
 @torch.no_grad()
 def evaluate(model, loader, loss_fn, device, evaluator=None):
     model.eval()
-    for batch in tqdm(loader):
+    total_loss = 0
+    total_correct = 0
+    y_pred = []
+    y_true = []
+    for batch in loader:
         batch = batch.to(device)
         out = model(batch)
-        loss = loss_fn(out.squeeze().float(), batch.y.squeeze())
-        acc = -loss
+        if evaluator is not None:
+            y_pred.append(out[:, 1].unsqueeze(-1))
+            y_true.append(batch.y)
+
+        loss = loss_fn(out.squeeze(), batch.y.squeeze()) / batch.num_graphs
+        total_loss += loss.item()
         if not isinstance(loss_fn, torch.nn.L1Loss):
-            acc = (out.argmax(dim=-1) == batch.y.squeeze()).float().mean()
-
+            total_correct += (out.argmax(dim=-1) == batch.y.squeeze()).sum().item()
+    if isinstance(loss_fn, torch.nn.CrossEntropyLoss):
+        accuracy = total_correct / loader.dataset.len()
+    else:
+        accuracy = -total_loss / len(loader)
     if evaluator is not None:
-        acc = evaluator.eval({"y_pred": out[:, 1].unsqueeze(dim=1), "y_true": batch.y})[
-            evaluator.eval_metric
-        ]
-
-    return loss, acc
+        accuracy = evaluator.eval({"y_pred": torch.cat(y_pred, dim = 0), "y_true": torch.cat(y_true, dim = 0)})[evaluator.eval_metric]
+    return total_loss / len(loader), accuracy

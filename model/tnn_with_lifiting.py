@@ -1,12 +1,10 @@
 import torch
 import torch.nn as nn
-import torch_geometric.nn as pyg_nn
-import torch_geometric.utils as pyg_utils
-import torch_sparse
-from torch_geometric.nn import global_mean_pool
 import torch.nn.functional as F
-from model.TNN import TNN
+from torch_geometric.nn import global_mean_pool
 from torch_geometric.transforms import BaseTransform
+
+from model.TNN import TNN
 
 
 class ProjectionSum(BaseTransform):
