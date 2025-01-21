@@ -1,12 +1,10 @@
-import torch
 from topomodelx.nn.cell.ccxn import CCXN
 from topomodelx.nn.cell.cwn import CWN
 from topomodelx.nn.hypergraph.allset_transformer import AllSetTransformer
 from topomodelx.nn.simplicial.scn2 import SCN2
-#from topomodelx.nn.hypergraph.unigcnii import UniGCNII
 from torch import nn
 from torch_geometric.nn import global_mean_pool
-from model.models.model_factory import ModelFactory
+
 from tools.normalize import normalize_matrix
 
 

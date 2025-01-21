@@ -1,22 +1,19 @@
 from typing import Optional
 
-import torch.nn as nn
-
-from torch_geometric.nn import PNAConv, global_add_pool, global_mean_pool, GCNConv, BatchNorm, GINConv, Sequential
 import torch
-from torch_geometric.nn import GINEConv, GPSConv
-from torch_geometric.nn import GCNConv, GINConv
-from torch_geometric.nn import global_mean_pool, global_add_pool
-from torch_geometric.nn.attention import PerformerAttention
-
+import torch.nn as nn
 from torch.nn import (
     BatchNorm1d,
-    Embedding,
     Linear,
     ModuleList,
     ReLU,
     Sequential,
 )
+from torch_geometric.nn import GINConv
+from torch_geometric.nn import GPSConv
+from torch_geometric.nn import Sequential
+from torch_geometric.nn.attention import PerformerAttention
+
 
 class GIN(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels,n_layers_gnn , task="classification"):
@@ -47,8 +44,8 @@ class GIN(nn.Module):
                     eps=0.,
                     train_eps=False)
             )
-        self.lin1 = Linear(hidden_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, out_channels)
+        # self.lin1 = Linear(hidden_channels, hidden_channels)
+        # self.lin2 = Linear(hidden_channels, out_channels)
 
 
     def forward(self, data ):

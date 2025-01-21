@@ -1,76 +1,50 @@
+import networkx as nx
 import torch
 import torch.nn as nn
-import torch_geometric.nn as pyg_nn
-import torch_geometric.utils as pyg_utils
-import torch_sparse
-from torch_geometric.data import Batch
-from torch_geometric.nn import global_mean_pool, DeepSetsAggregation
-import torch.nn.functional as F
-from torch_geometric.utils import degree
-import networkx as nx
-from tools.lifting.cycle_lifting import CellCycleLifting
+import torch_geometric
+from torch_geometric.nn import global_mean_pool
 from torch_geometric.utils import is_undirected
 from torch_geometric.utils import to_undirected
-from torch_geometric.utils import to_networkx
 
-
-import torch_geometric
-
-from layers.deepset import DeepSetLayer
 from layers.encoders.all_cell_features_encoders import AllCellFeatureEncoder
 from model.GNN import GIN, GPS
-from model.TNN import TNN
-from torch_geometric.transforms import BaseTransform
-
-from preprocessing.preprocessing import remove_duplicate_edges
-from tools.redout import PropagateSignalDown
-
-
-from torch_geometric.nn import global_mean_pool
-import torch.nn.functional as F
-
 # from layers.diff_lifting import DiffLifting
 from model.TNN import TNN
-from torch_geometric.transforms import BaseTransform
-
 from model.tnn_with_lifiting import ProjectionSum
 from preprocessing.preprocessing import remove_duplicate_edges
-from tools.redout import PropagateSignalDown
 from tools.redout import DirectReadout
+from tools.redout import PropagateSignalDown
 
 
-class AttentionLifting(BaseTransform):
+class AttentionLifting(nn.Module):
     """Lift node features to hyperedge features using attention mechanism."""
-    
-    def __init__(self, feature_dim=None):
+
+    def __init__(self, feature_dim=None, device="cpu"):
         super().__init__()
-        self.W1 = torch.nn.Parameter(torch.randn(feature_dim, feature_dim) if feature_dim else torch.randn(64, 64))
-        self.W2 = torch.nn.Parameter(torch.randn(feature_dim, feature_dim) if feature_dim else torch.randn(64, 64))
-        self.W3 = torch.nn.Parameter(torch.randn(feature_dim, feature_dim) if feature_dim else torch.randn(64, 64))
-        self.k_v = torch.nn.Parameter(torch.tensor(2.0))  # Automatically requires_grad=True
-        def print_grad_W1(grad):
-            print("Gradient for W1:", grad)
-
-        def print_grad_W2(grad):
-            print("Gradient for W2:", grad)
-
-        def print_grad_W3(grad):
-            print("Gradient for W3:", grad)
-
-        def print_grad_kv(grad):
-            print("Gradient for k_v:", grad)
-
-        # Register hooks for monitoring gradients
-        self.W1.register_hook(print_grad_W1)
-        self.W2.register_hook(print_grad_W2)
-        self.W3.register_hook(print_grad_W3)
-        self.k_v.register_hook(print_grad_kv)
-        # Deep Set for order-invariant aggregation
+        self.W1 = torch.randn(feature_dim, feature_dim, device=device) if feature_dim else torch.randn(64, 64,
+                                                                                                       device=device)
+        self.W2 = torch.randn(feature_dim, feature_dim, device=device) if feature_dim else torch.randn(64, 64,
+                                                                                                       device=device)
+        self.W3 = torch.randn(feature_dim, feature_dim, device=device) if feature_dim else torch.randn(64, 64,
+                                                                                                       device=device)
+        self.k_v = torch.tensor(2.0)  # Automatically requires_grad=True
         self.phi = torch.nn.Sequential(
-            torch.nn.Linear(feature_dim if feature_dim else 64, feature_dim*2 if feature_dim else 128),
+            torch.nn.Linear(feature_dim if feature_dim else 64, feature_dim * 2 if feature_dim else 128),
             torch.nn.ReLU(),
-            torch.nn.Linear(feature_dim*2 if feature_dim else 128, feature_dim if feature_dim else 64)
-        )
+            torch.nn.Linear(feature_dim * 2 if feature_dim else 128, feature_dim if feature_dim else 64)
+        ).to(device)
+
+    def print_grad_W1(grad):
+        print("Gradient for W1:", grad)
+
+    def print_grad_W2(grad):
+        print("Gradient for W2:", grad)
+
+    def print_grad_W3(grad):
+        print("Gradient for W3:", grad)
+
+    def print_grad_kv(grad):
+        print("Gradient for k_v:", grad)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}()"
@@ -80,53 +54,53 @@ class AttentionLifting(BaseTransform):
         keys = sorted(
             [key.split("_")[1] for key in data if ("incidence" in key and "-" not in key)]
         )
-        
+
         self.k_v = torch.nn.Parameter(torch.tensor(2.0))  # Automatically requires_grad=True
 
         for elem in keys:
             if f"x_{elem}" not in data:
                 idx_to_project = 0 if elem == "hyperedges" else int(elem) - 1
                 incidence = data["incidence_" + elem]
-                
+
                 # Get nodes involved in each structure
                 node_features = data[f"x_{idx_to_project}"]
-                
+
                 # For each structure (edge/hyperedge), get its incident nodes
                 structures = []
                 for i in range(incidence.shape[1]):
                     nodes = torch.where(incidence[:, i] != 0)[0]
                     if len(nodes) > 0:
                         structures.append((i, nodes))
-                
+
                 # Compute lifted features for each structure
                 lifted_features = []
                 for struct_idx, nodes in structures:
                     features = node_features[nodes]
-                    
+
                     # Compute attention scores using the gradient-preserving k_v
                     scaling_factor = torch.sqrt(self.k_v)
                     query = torch.matmul(features, self.W1.t())
                     key = torch.matmul(features, self.W2.t())
                     scores = torch.matmul(query, key.t()) / scaling_factor
-                    
+
                     # Apply attention
                     attention = torch.softmax(scores, dim=-1)
                     values = torch.matmul(features, self.W3.t())
                     messages = torch.matmul(attention, values)
-                    
+
                     # Apply order-invariant aggregation
                     structure_feature = self.phi(messages.mean(dim=0, keepdim=True))
                     lifted_features.append(structure_feature)
-                
+
                 # Combine all lifted features
                 if lifted_features:
                     data["x_" + elem] = torch.cat(lifted_features, dim=0)
                 else:
                     data["x_" + elem] = torch.zeros(
-                        (incidence.shape[1], node_features.shape[1]), 
+                        (incidence.shape[1], node_features.shape[1]),
                         device=node_features.device
                     )
-        
+
         return data
 
     def forward(self, data):
@@ -135,11 +109,10 @@ class AttentionLifting(BaseTransform):
         return data
 
 
-
 class TNN_KNN_MLP_G(nn.Module):
 
-    def __init__(self,in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False,global_pool="sum",
-                 device="cpu", tnn_type= "SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64):
+    def __init__(self, in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False, global_pool="sum",
+                 device="cpu", tnn_type="SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64):
         super(TNN_KNN_MLP_G, self).__init__()
         self.k = k
         self.k_min = 2
@@ -149,16 +122,15 @@ class TNN_KNN_MLP_G(nn.Module):
         self.diff_lifting = diff_lifting
         self.tnn_type = tnn_type
         self.num_classes = num_classes
-        #self.lin= nn.Linear(tnn_out_feat, num_classes)
-        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim, proj_dropout=0.5)
+
+        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels], out_channels=hidden_dim,
+                                                     proj_dropout=0.5)
         if diff_lifting:
-            # self.deep_set_layers = []
-            # for i in range(k):
-            #     self.deep_set_layers.append(DeepSetLayer(in_channels, hidden_dim))
+
             if args.gnn == "GIN":
                 self.gnn = GIN(in_channels, embedding_dim, embedding_dim, num_layers_gnn).to(device)
             elif args.gnn == "GPS":
-                self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len , num_layers_gnn).to(device)
+                self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn).to(device)
             self.pool = global_mean_pool
             self.k = k
             self.mlp = nn.Sequential(
@@ -170,7 +142,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 nn.Linear(hidden_dim, 1),
             )
             if tnn_type not in ["UniGCNII", "AST"]:
-                self.mlp_cell  = nn.Sequential(
+                self.mlp_cell = nn.Sequential(
                     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
                     nn.ReLU(),
                     nn.Linear(2 * hidden_dim, hidden_dim),
@@ -192,11 +164,10 @@ class TNN_KNN_MLP_G(nn.Module):
                 torch.nn.Linear(64, self.k_max - self.k_min + 1)  # Output size covers all possible k values
             )
 
-
             self.triangle_count = 0
             self.projection_sum = ProjectionSum()
 
-            self.attention_lift = AttentionLifting(feature_dim=in_channels)
+            self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
 
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
@@ -222,7 +193,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 "pooling_type": global_pool,
             })
 
-    def __create_laplacians(self, data,incidence_matrix_1, lifted_data, data_for_lifting):
+    def __create_laplacians(self, data, incidence_matrix_1, lifted_data, data_for_lifting):
         new_edge_index, new_edge_attr = torch_geometric.utils.get_laplacian(data.edge_index)
         data.x_1 = lifted_data["x_1"]
         data.x_2 = lifted_data["x_2"]
@@ -257,46 +228,23 @@ class TNN_KNN_MLP_G(nn.Module):
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
             embeddings = self.gnn(data)
 
-                   # Keep gradient through mean operation
+            # Keep gradient through mean operation
             embedding_mean = embeddings.mean(dim=0, keepdim=True)
 
             print("embeddings requires_grad:", embeddings.requires_grad)
 
-
-            embedding_mean.requires_grad_()
-
-            # Generate k distribution from embeddings
             k_logits = self.k_mlp(embedding_mean)  # Shape: [1, k_max - k_min + 1]
+            k_logits_sum = k_logits.sum()
 
-            # Debug: Check if k_logits requires gradients
-            if not k_logits.requires_grad:
-                print("k_logits does not require gradients. Check computation graph.")
-                print("Embedding mean requires_grad:", embedding_mean.requires_grad)
-                print("k_mlp parameters:", [p.requires_grad for p in self.k_mlp.parameters()])
-
-            
-            k_logits.register_hook(lambda grad: print("Gradient for k_logits:", grad))
-            
-            # Use PyTorch's gumbel_softmax for differentiable sampling
-            k_sample = torch.nn.functional.gumbel_softmax(k_logits, tau=1.0, hard=False, dim=-1)
-            k_sample.register_hook(lambda grad: print("Gradient for k_sample:", grad))
-
-            k_values = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=torch.float)
-            k_continuous = (k_sample * k_values).sum()  # Weighted sum for continuous k
-            k_continuous.register_hook(lambda grad: print("Gradient for k_continuous:", grad))
-
-            self.k = k = max(self.k_min, int(k_continuous.item()))  # Ensure integer k
-
-
-            mask_knn= torch.nn.functional.one_hot(data.batch_0,num_classes=vertex_slice.shape[0]-1)
+            mask_knn = torch.nn.functional.one_hot(data.batch_0, num_classes=vertex_slice.shape[0] - 1)
 
             mask_knn = mask_knn.float() @ mask_knn.T.float()
 
-            distances = torch.cdist(embeddings, embeddings) # Find if there is cdist without sqrt
+            distances = torch.cdist(embeddings, embeddings)
 
-            distances= mask_knn * distances + (1-mask_knn)*1e7
+            distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
-            if self.tnn_type == "UniGCNII" or self.tnn_type=="AST":
+            if self.tnn_type == "UniGCNII" or self.tnn_type == "AST":
                 knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
 
                 pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
@@ -313,90 +261,79 @@ class TNN_KNN_MLP_G(nn.Module):
                     incidence_matrix_1[edge[0], idx] = 1
                     incidence_matrix_1[edge[1], idx] = 1
 
-                num_nodes= data.x.size(0)
+                num_nodes = data.x.size(0)
 
-                print("OUUUUUUU\n")
+                mask = torch.zeros((num_nodes, num_nodes), device=data.x.device)
 
+                node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, self.k))
 
-                mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
+                # This is not used, but we keep it for future use
+                incidence_matrix_2 = incidence_matrix_1.T @ node_triangle_matrix
+                incidence_matrix_2 = torch.div(incidence_matrix_2, 2, rounding_mode='trunc')
+                # ---- # ----- # ----- #
 
-                node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,self.k))
-
-                incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
-                incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
-
-                data_for_lifting={}
+                data_for_lifting = {}
 
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
-
+                print(incidence_matrix_1.grad_fn)
                 data_for_lifting = {
                     "x_0": x.float(),
                     "incidence_1": incidence_matrix_1,
-                    "k_v": k_continuous  # Pass the continuous k value
+                    "k_v": k_logits_sum  # Pass the continuous k value
                 }
-            
-                print("OUUUUUUU\n")
+
                 lifted_data = self.attention_lift(data_for_lifting)
 
                 data.x_0 = x.float()
 
                 data.incidence_1 = data_for_lifting.get("incidence_1")
-                data.incidence_1= torch.Tensor(data.incidence_1).to_sparse_coo()
-            
+                data.incidence_1 = torch.Tensor(data.incidence_1).to_sparse_coo()
 
+            ## AMAURI E DIEGO, ESSE else é para o celular, olhar o de cima
             else:
                 knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
 
                 print("knn_indices: ", knn_indices.shape, knn_indices)
 
-                                # Assume knn_indices, embeddings, and original_incidence are given
                 num_nodes, k = knn_indices.size()
                 embedding_dim = embeddings.size(1)
 
-                # Step 1: Gather embeddings for each node's KNN
                 knn_embeddings = embeddings[knn_indices]  # Shape: [num_nodes, k, embedding_dim]
                 print("knn_embeddings: ", knn_embeddings.shape, knn_embeddings)
-                # Step 2: Concatenate the central node embedding with its KNN embeddings
-                # For each node v0, create pairs: [embed(v0), embed(v1)], ..., [embed(v0), embed(vk)]
                 central_embeddings = embeddings.unsqueeze(1).expand(-1, k, -1)  # Shape: [num_nodes, k, embedding_dim]
                 print("central_embeddings: ", central_embeddings.shape, central_embeddings)
-                edge_embeddings = torch.cat([central_embeddings, knn_embeddings], dim=-1)  # Shape: [num_nodes, k, 2 * embedding_dim]
+                edge_embeddings = torch.cat([central_embeddings, knn_embeddings],
+                                            dim=-1)  # Shape: [num_nodes, k, 2 * embedding_dim]
                 print("edge_embeddings: ", edge_embeddings.shape, edge_embeddings)
-                # Step 3: Pool the embeddings for each new edge (e.g., mean or sum pooling)
                 pooled_embeddings = edge_embeddings.mean(dim=2)  # Shape: [num_nodes, k, embedding_dim]
                 print("pooled_embeddings: ", pooled_embeddings.shape, pooled_embeddings)
-                # Step 4: Use an MLP to compute inclusion probabilities
                 include_probs = torch.sigmoid(self.mlp_cell(pooled_embeddings))  # Shape: [num_nodes, k]
                 print("include_probs: ", include_probs.shape, include_probs)
-                # Step 5: Apply the straight-through estimator to sample inclusion
                 inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()  # Shape: [num_nodes, k]
                 print("inclusion_samples: ", inclusion_samples.shape, inclusion_samples)
                 straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
                 print("straight_through_samples: ", straight_through_samples.shape, straight_through_samples)
-                # Step 6: Create the new incidence matrix
-                # Initialize the new_sampled_incidence as a zero matrix
                 num_new_edges = num_nodes * k
                 new_sampled_incidence = torch.zeros((num_nodes, num_new_edges), device=embeddings.device)
                 print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
-                # Map node indices to edge indices
-                edge_indices = torch.arange(num_new_edges, device=embeddings.device).view(num_nodes, k)  # Shape: [num_nodes, k]
+                edge_indices = torch.arange(num_new_edges, device=embeddings.device).view(num_nodes,
+                                                                                          k)  # Shape: [num_nodes, k]
                 print("edge_indices: ", edge_indices.shape, edge_indices)
-                # Scatter the straight-through samples into the incidence matrix
                 print("edge_indices view", edge_indices.view(-1, 1).shape)
                 print("straight view", straight_through_samples.view(-1, 1).shape)
                 new_sampled_incidence.scatter_(1, edge_indices.view(-1, 1).T, straight_through_samples.view(-1, 1).T)
                 print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
-                # Step 7: Concatenate the original and new incidence matrices
 
                 num_edges = edge_index_undirected.size(1)
 
                 original_incidence_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
-                
+
                 for idx, edge in enumerate(edge_index_undirected.T):
                     original_incidence_1[edge[0], idx] = 1
                     original_incidence_1[edge[1], idx] = 1
 
-                final_incidence = torch.cat([original_incidence_1, new_sampled_incidence], dim=1)  # Shape: [num_nodes, num_original_edges + num_new_edges]
+                final_incidence = torch.cat([original_incidence_1, new_sampled_incidence],
+                                            dim=1)  # Shape: [num_nodes, num_original_edges + num_new_edges]
 
                 print("final_incidence: ", final_incidence.shape, final_incidence)
 
@@ -406,7 +343,6 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 k = edge_indices.size(1)  # Should be 3
 
-                # Step 1: Get the edges from the incidence matrix
                 edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Returns indices of non-zero entries
                 rows, cols = edge_indices  # Rows are node indices, cols are edge indices
                 print("original edge_index undirected: ", edge_index_undirected.shape)
@@ -418,91 +354,70 @@ class TNN_KNN_MLP_G(nn.Module):
                     else:
                         edge_dict[edge].append(node)
 
-                # Convert the edge_dict to a list of edges
-                edges = [tuple(nodes) for nodes in edge_dict.values() if len(nodes) == 2]  # Ensure only valid edges are considered
+                edges = [tuple(nodes) for nodes in edge_dict.values() if
+                         len(nodes) == 2]  # Ensure only valid edges are considered
 
-                # Step 2: Create the NetworkX graph
                 G = nx.Graph()
                 G.add_edges_from(edges)
-    
-                # Step 3: Print or analyze the graph
+
                 print(f"Number of nodes: {G.number_of_nodes()}")
                 print(f"Number of edges: {G.number_of_edges()}")
                 print(f"Cycles: {nx.cycle_basis(G)}")
 
-                # Precompute edge-endpoint mappings
                 edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Indices of non-zero entries
                 rows, cols = edge_indices  # Rows are node indices, cols are edge indices
 
-                # Convert the incidence matrix into an edge-to-node mapping
                 edge_to_nodes = {}
                 for edge_idx in cols.unique():
                     nodes = rows[cols == edge_idx].tolist()
                     if len(nodes) == 2:  # Only consider valid edges with exactly two endpoints
                         edge_to_nodes[edge_idx.item()] = tuple(nodes)
 
-                # Convert edge_to_nodes into a tensor for efficient processing
-                edges_tensor = torch.tensor(list(edge_to_nodes.values()), device=final_incidence.device)  # Shape: [num_edges, 2]
+                edges_tensor = torch.tensor(list(edge_to_nodes.values()),
+                                            device=final_incidence.device)  # Shape: [num_edges, 2]
 
-                # Create subgraphs as NetworkX undirected graphs
                 subgraphs = []
                 for node in range(num_nodes):
-                    # Get the neighbors (including the node itself)
                     neighbors = set(knn_indices[node].tolist())
                     neighbors.add(node)
-                    
-                    # Convert neighbors to a tensor for efficient comparison
                     neighbors_tensor = torch.tensor(list(neighbors), device=final_incidence.device)
-                    
-                    # Filter edges where both endpoints are in the neighbor set
+
                     mask = (torch.isin(edges_tensor[:, 0], neighbors_tensor) &
                             torch.isin(edges_tensor[:, 1], neighbors_tensor))
                     subgraph_edges = edges_tensor[mask]  # Shape: [num_filtered_edges, 2]
-                    
-                    # Convert to a NetworkX undirected graph
+
                     G = nx.Graph()
                     G.add_edges_from(subgraph_edges.tolist())
-                    
-                    # Add the graph to the list of subgraphs
                     subgraphs.append(G)
 
-                # Analyze the subgraphs
                 print(f"Number of subgraphs: {len(subgraphs)}")
                 for i, G in enumerate(subgraphs):
                     print(f"Subgraph {i}: {G.edges()}")  # Print edges of each subgraph
                     print(f"Cycles in Subgraph {i}: {nx.cycle_basis(G)}")
 
-
-                # Example analysis for a specific subgraph
-                subgraph_id = 1913  # Change to the index of the desired subgraph
+                subgraph_id = 1913
                 selected_graph = subgraphs[subgraph_id]
                 print(f"Subgraph {subgraph_id} edges: {selected_graph.edges()}")
 
                 print(nx.cycle_basis(selected_graph))
 
-                # Additional analysis
                 print(f"Number of nodes in Subgraph {subgraph_id}: {selected_graph.number_of_nodes()}")
                 print(f"Number of edges in Subgraph {subgraph_id}: {selected_graph.number_of_edges()}")
                 print(f"Cycles in Subgraph {subgraph_id}: {nx.cycle_basis(selected_graph)}")
-                #cell_cycle_lifting = CellCycleLifting(max_cell_length=6)  # Define max cell length as needed
-                #lifted_topology = cell_cycle_lifting.lift_topology(data_geometric)
+                # cell_cycle_lifting = CellCycleLifting(max_cell_length=6)  # Define max cell length as needed
+                # lifted_topology = cell_cycle_lifting.lift_topology(data_geometric)
 
-                #print("Lifted Topology: ", lifted_topology.keys())
-                #print("Lifted Topology incidence: ", lifted_topology["incidence_1"])
-                #print("Lifted Topology incidence: ", lifted_topology["incidence_2"])
-                
+                # print("Lifted Topology: ", lifted_topology.keys())
+                # print("Lifted Topology incidence: ", lifted_topology["incidence_1"])
+                # print("Lifted Topology incidence: ", lifted_topology["incidence_2"])
 
                 # Step 7: Cycle Sampling for Cell Construction
-                
-
 
                 # pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
                 # include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
                 # inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
                 # straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
-                
-
 
                 # mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
 
@@ -511,7 +426,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
                 # incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
 
-                data_for_lifting={}
+                data_for_lifting = {}
 
                 data_for_lifting = {
                     "x_0": x.float(),  # Node features
@@ -519,71 +434,65 @@ class TNN_KNN_MLP_G(nn.Module):
                     "incidence_2": incidence_matrix_2,  # edge_to-triangle
                 }
 
-
                 lifted_data = self.projection_sum(data_for_lifting)
 
                 data.x_0 = x.float()
 
-            
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
-
 
         data = self.feature_encoder(data)
         tnn_output = self.tnn(data)
         out = self.readout(tnn_output, batch)
 
-
         return out["logits"]
-    
-
 
 
 def generate_graph_from_data(
         data: torch_geometric.data.Data
-    ) -> nx.Graph:
-        r"""Generate a NetworkX graph from the input data object.
+) -> nx.Graph:
+    r"""Generate a NetworkX graph from the input data object.
 
-        Parameters
-        ----------
-        data : torch_geometric.data.Data
-            The input data.
+    Parameters
+    ----------
+    data : torch_geometric.data.Data
+        The input data.
 
-        Returns
-        -------
-        nx.Graph
-            The generated NetworkX graph.
-        """
-        # Check if data object have edge_attr, return list of tuples as [(node_id, {'features':data}, 'dim':1)] or ??
-        nodes = [
-            (n, dict(features=data.x[n], dim=0))
-            for n in range(data.x.shape[0])
-        ]
+    Returns
+    -------
+    nx.Graph
+        The generated NetworkX graph.
+    """
+    # Check if data object have edge_attr, return list of tuples as [(node_id, {'features':data}, 'dim':1)] or ??
+    nodes = [
+        (n, dict(features=data.x[n], dim=0))
+        for n in range(data.x.shape[0])
+    ]
 
-        if hasattr(data, "edge_attr"):
-            # In case edge features are given, assign features to every edge
-            edge_index, edge_attr = (
-                data.edge_index,
-                (
-                    data.edge_attr
-                    if is_undirected(data.edge_index, data.edge_attr)
-                    else to_undirected(data.edge_index, data.edge_attr)
-                ),
+    if hasattr(data, "edge_attr"):
+        # In case edge features are given, assign features to every edge
+        edge_index, edge_attr = (
+            data.edge_index,
+            (
+                data.edge_attr
+                if is_undirected(data.edge_index, data.edge_attr)
+                else to_undirected(data.edge_index, data.edge_attr)
+            ),
+        )
+        edges = [
+            (i.item(), j.item(), dict(features=edge_attr[edge_idx], dim=1))
+            for edge_idx, (i, j) in enumerate(
+                zip(edge_index[0], edge_index[1], strict=False)
             )
-            edges = [
-                (i.item(), j.item(), dict(features=edge_attr[edge_idx], dim=1))
-                for edge_idx, (i, j) in enumerate(
-                    zip(edge_index[0], edge_index[1], strict=False)
-                )
-            ]
-        else:
-            # If edge_attr is not present, return list list of edges
-            edges = [
-                (i.item(), j.item(), {})
-                for i, j in zip(
-                    data.edge_index[0], data.edge_index[1], strict=False
-                )
-            ]
-        graph = nx.Graph()
-        graph.add_nodes_from(nodes)
-        graph.add_edges_from(edges)
-        return graph
+        ]
+    else:
+        # If edge_attr is not present, return list list of edges
+        edges = [
+            (i.item(), j.item(), {})
+            for i, j in zip(
+                data.edge_index[0], data.edge_index[1], strict=False
+            )
+        ]
+    graph = nx.Graph()
+    graph.add_nodes_from(nodes)
+    graph.add_edges_from(edges)
+    return graph
