@@ -11,7 +11,6 @@ from torch.nn import (
 )
 from torch_geometric.nn import GINConv
 from torch_geometric.nn import GPSConv
-from torch_geometric.nn import Sequential
 from torch_geometric.nn.attention import PerformerAttention
 
 
@@ -122,5 +121,3 @@ class GPS(torch.nn.Module):
         for conv in self.convs:
             x = conv(x, edge_index, batch)
         return x
-
-
