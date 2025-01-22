@@ -76,9 +76,10 @@ class AttentionLifting(nn.Module):
                 lifted_features = []
                 for struct_idx, nodes in structures:
                     features = node_features[nodes]
-
+                    #print("k_v: ",self.k_v)
                     # Compute attention scores using the gradient-preserving k_v
                     scaling_factor = torch.sqrt(self.k_v)
+                    #print("Scaling factor: ", scaling_factor)
                     query = torch.matmul(features, self.W1.t())
                     key = torch.matmul(features, self.W2.t())
                     scores = torch.matmul(query, key.t()) / scaling_factor
@@ -90,6 +91,7 @@ class AttentionLifting(nn.Module):
 
                     # Apply order-invariant aggregation
                     structure_feature = self.phi(messages.mean(dim=0, keepdim=True))
+                    #print("structure feature", structure_feature)
                     lifted_features.append(structure_feature)
 
                 # Combine all lifted features
@@ -101,6 +103,7 @@ class AttentionLifting(nn.Module):
                         device=node_features.device
                     )
 
+        #print("data after lifting: ", data, "\n\n")
         return data
 
     def forward(self, data):
@@ -282,7 +285,13 @@ class TNN_KNN_MLP_G(nn.Module):
                     "k_v": k_logits_sum  # Pass the continuous k value
                 }
 
+                data_for_lifting["x_0"].requires_grad_()
+
+                #print(data_for_lifting)
+
                 lifted_data = self.attention_lift(data_for_lifting)
+
+                #print(data_for_lifting)
 
                 data.x_0 = x.float()
 
@@ -441,9 +450,18 @@ class TNN_KNN_MLP_G(nn.Module):
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
         data = self.feature_encoder(data)
-        tnn_output = self.tnn(data)
-        out = self.readout(tnn_output, batch)
+        print("data after feature encoder: ", data, "\n\n")
+        data.get("incidence_1").requires_grad_()
+        data.get("x_0").requires_grad_()
+        print("data after feature encoder grad: ", data, "\n\n")
+        print("x.requires_grad:", data.x.requires_grad)
+        print("x_0.requires_grad:", data.x_0.requires_grad)
+        print("incidence_1.requires_grad:", data.incidence_1.requires_grad)
 
+        tnn_output = self.tnn(data)
+        print(tnn_output)
+        out = self.readout(tnn_output, batch)
+        print("logits:", out["logits"].requires_grad)
         return out["logits"]
 
 
