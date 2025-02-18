@@ -283,7 +283,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 }
 
                 lifted_data = self.attention_lift(data_for_lifting)
-
+                print(lifted_data)
                 data.x_0 = x.float()
 
                 data.incidence_1 = data_for_lifting.get("incidence_1")

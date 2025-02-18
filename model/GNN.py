@@ -11,7 +11,6 @@ from torch.nn import (
 )
 from torch_geometric.nn import GINConv
 from torch_geometric.nn import GPSConv
-from torch_geometric.nn import Sequential
 from torch_geometric.nn.attention import PerformerAttention
 
 
@@ -20,7 +19,7 @@ class GIN(nn.Module):
         super(GIN, self).__init__()
         ## Initialization Step
         self.initialization = GINConv(
-            Sequential(
+            torch.nn.Sequential(
                 Linear(in_channels, hidden_channels),
                 ReLU(),
                 Linear(hidden_channels, hidden_channels),
@@ -34,7 +33,7 @@ class GIN(nn.Module):
         for i in range(n_layers_gnn - 1):
             self.mp_layers.append(
                 GINConv(
-                    Sequential(
+                    torch.nn.Sequential(
                         Linear(hidden_channels, hidden_channels),
                         ReLU(),
                         Linear(hidden_channels, hidden_channels),
@@ -99,7 +98,7 @@ class GPS(torch.nn.Module):
 
         self.convs = ModuleList()
         for _ in range(num_layers):
-            nn = Sequential(
+            nn = torch.nn.Sequential(
                 Linear(hidden_channels, hidden_channels),
                 ReLU(),
                 Linear(hidden_channels, hidden_channels),
