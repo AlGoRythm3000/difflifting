@@ -55,7 +55,7 @@ class AttentionLifting(nn.Module):
             [key.split("_")[1] for key in data if ("incidence" in key and "-" not in key)]
         )
 
-        self.k_v = torch.nn.Parameter(torch.tensor(2.0))  # Automatically requires_grad=True
+        self.k_v = data["k_v"]  # Automatically requires_grad=True
 
         for elem in keys:
             if f"x_{elem}" not in data:
@@ -106,6 +106,7 @@ class AttentionLifting(nn.Module):
     def forward(self, data):
         """Apply the lifting to the input data."""
         data = self.lift_features(data)
+        data["x_1"]= data["incidence_1"].T @ data["x_0"]
         return data
 
 
@@ -176,6 +177,9 @@ class TNN_KNN_MLP_G(nn.Module):
             n_layers=num_layers_tnn,
             device=device
         )
+
+        self.classifier = nn.Linear(hidden_dim, num_classes)
+
         if args.no_readout:
             self.readout = DirectReadout(**{
                 "readout_name": "DirectReadout",
@@ -225,6 +229,7 @@ class TNN_KNN_MLP_G(nn.Module):
         data = batch
         if self.diff_lifting:
             x, edge_index = data.x.float(), data.edge_index
+            print("Initial data.x shape:", data.x.shape)  # Initial shape
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
             embeddings = self.gnn(data)
 
@@ -281,12 +286,14 @@ class TNN_KNN_MLP_G(nn.Module):
                     "incidence_1": incidence_matrix_1,
                     "k_v": k_logits_sum  # Pass the continuous k value
                 }
-
+                print("Shape in data_for_lifting:", data_for_lifting["x_0"].shape)
                 lifted_data = self.attention_lift(data_for_lifting)
                 print(lifted_data)
-                data.x_0 = x.float()
+                print("After lifting shape:", lifted_data["x_0"].shape if "x_0" in lifted_data else "x_0 not in lifted_data")
 
-                data.incidence_1 = data_for_lifting.get("incidence_1")
+                data.x_0 = lifted_data.get("x_0").float()
+
+                data.incidence_1 = lifted_data.get("incidence_1")
                 data.incidence_1 = torch.Tensor(data.incidence_1).to_sparse_coo()
 
             ## AMAURI E DIEGO, ESSE else é para o celular, olhar o de cima
@@ -441,9 +448,22 @@ class TNN_KNN_MLP_G(nn.Module):
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
         data = self.feature_encoder(data)
+        print("After feature encoder shape:", data.x_0.shape)
+        print("BT x ", data.incidence_1.T @ data.x_0)
+        lifted_matrix = data.incidence_1.T @ data.x_0
+        print(data.x_0.shape)
+        summed_hedge= torch.sum(lifted_matrix, dim=0)
+        print(summed_hedge.shape)
+        print(self.classifier)
+        print(self.classifier(summed_hedge))
+        print(self.classifier(summed_hedge).shape)
+        #return self.classifier(summed_hedge)
+        print(data)
+        print("shapes before tnn: ", data["x_0"].shape, data["x_1"].shape)
         tnn_output = self.tnn(data)
+        print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
         out = self.readout(tnn_output, batch)
-
+        
         return out["logits"]
 
 
