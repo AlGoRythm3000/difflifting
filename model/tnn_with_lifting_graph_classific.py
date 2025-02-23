@@ -6,6 +6,9 @@ from torch_geometric.nn import global_mean_pool
 from torch_geometric.utils import is_undirected
 from torch_geometric.utils import to_undirected
 
+import torch.nn.functional as F
+
+
 from layers.encoders.all_cell_features_encoders import AllCellFeatureEncoder
 from model.GNN import GIN, GPS
 # from layers.diff_lifting import DiffLifting
@@ -168,7 +171,7 @@ class TNN_KNN_MLP_G(nn.Module):
             self.triangle_count = 0
             self.projection_sum = ProjectionSum()
 
-            self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
+            #self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
 
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
@@ -178,7 +181,7 @@ class TNN_KNN_MLP_G(nn.Module):
             device=device
         )
 
-        self.classifier = nn.Linear(hidden_dim, num_classes)
+        #self.classifier = nn.Linear(hidden_dim, num_classes)
 
         if args.no_readout:
             self.readout = DirectReadout(**{
@@ -231,15 +234,35 @@ class TNN_KNN_MLP_G(nn.Module):
             x, edge_index = data.x.float(), data.edge_index
             print("Initial data.x shape:", data.x.shape)  # Initial shape
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
+
+            print("number of edges: ", edge_index_undirected.size(1))
             embeddings = self.gnn(data)
 
             # Keep gradient through mean operation
             embedding_mean = embeddings.mean(dim=0, keepdim=True)
 
-            print("embeddings requires_grad:", embeddings.requires_grad)
+            #print("embeddings requires_grad:", embeddings.requires_grad)
 
             k_logits = self.k_mlp(embedding_mean)  # Shape: [1, k_max - k_min + 1]
-            k_logits_sum = k_logits.sum()
+
+
+            k_sample = F.gumbel_softmax(k_logits, tau=1.0, hard=True)
+
+            print("k_sample:", k_sample)
+
+            k_range = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=k_logits.dtype)
+
+            #print("k_range:", k_range)
+
+
+            # Compute the differentiable integer sample as the dot product of the one-hot vector and the range tensor.
+            k_v = torch.sum(k_sample * k_range, dim=-1)  # Shape: [1]
+
+            print("k_v:", k_v)
+            #print("k_v grad:", k_v.grad)
+
+            self.k_v = k_v
+
 
             mask_knn = torch.nn.functional.one_hot(data.batch_0, num_classes=vertex_slice.shape[0] - 1)
 
@@ -250,7 +273,9 @@ class TNN_KNN_MLP_G(nn.Module):
             distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
             if self.tnn_type == "UniGCNII" or self.tnn_type == "AST":
-                knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
+                knn_indices = torch.topk(-distances, self.k_v.long().item(), dim=-1)[1]
+
+                #print("knn_indices: ", knn_indices.shape)
 
                 pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
@@ -270,31 +295,39 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 mask = torch.zeros((num_nodes, num_nodes), device=data.x.device)
 
-                node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, self.k))
+                node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, self.k_v.long().item()))
 
                 # This is not used, but we keep it for future use
                 incidence_matrix_2 = incidence_matrix_1.T @ node_triangle_matrix
                 incidence_matrix_2 = torch.div(incidence_matrix_2, 2, rounding_mode='trunc')
                 # ---- # ----- # ----- #
 
-                data_for_lifting = {}
-
+                #print("incidence matrix before concatenation:", incidence_matrix_1.shape)
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
-                print(incidence_matrix_1.grad_fn)
-                data_for_lifting = {
-                    "x_0": x.float(),
-                    "incidence_1": incidence_matrix_1,
-                    "k_v": k_logits_sum  # Pass the continuous k value
-                }
-                print("Shape in data_for_lifting:", data_for_lifting["x_0"].shape)
-                lifted_data = self.attention_lift(data_for_lifting)
-                print(lifted_data)
-                print("After lifting shape:", lifted_data["x_0"].shape if "x_0" in lifted_data else "x_0 not in lifted_data")
 
-                data.x_0 = lifted_data.get("x_0").float()
+                print("incidence matrix after concatenation:", incidence_matrix_1.shape)
+                #print(incidence_matrix_1.grad_fn)
+                
+                data.x_0 = x.float()
 
-                data.incidence_1 = lifted_data.get("incidence_1")
+                data.x_0 = torch.div(data.x_0, self.k_v)
+
+                #print("data.x_0 after division:", data.x_0.shape)
+
+                data.incidence_1 = incidence_matrix_1
                 data.incidence_1 = torch.Tensor(data.incidence_1).to_sparse_coo()
+
+                
+
+                #print(data)
+                data = self.feature_encoder(data)
+                #print("data after feature encoder", data)
+                #print("shapes before tnn: ", data["x_0"].shape)
+                tnn_output = self.tnn(data)
+                #print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
+                out = self.readout(tnn_output, batch)
+                #print(out)
+                return out["logits"]    
 
             ## AMAURI E DIEGO, ESSE else é para o celular, olhar o de cima
             else:
@@ -447,23 +480,15 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
-        data = self.feature_encoder(data)
-        print("After feature encoder shape:", data.x_0.shape)
-        print("BT x ", data.incidence_1.T @ data.x_0)
-        lifted_matrix = data.incidence_1.T @ data.x_0
-        print(data.x_0.shape)
-        summed_hedge= torch.sum(lifted_matrix, dim=0)
-        print(summed_hedge.shape)
-        print(self.classifier)
-        print(self.classifier(summed_hedge))
-        print(self.classifier(summed_hedge).shape)
-        #return self.classifier(summed_hedge)
+        
         print(data)
-        print("shapes before tnn: ", data["x_0"].shape, data["x_1"].shape)
+        data = self.feature_encoder(data)
+        print("data after feature encoder", data)
+        print("shapes before tnn: ", data["x_0"].shape)
         tnn_output = self.tnn(data)
         print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
         out = self.readout(tnn_output, batch)
-        
+        print(out)
         return out["logits"]
 
 
