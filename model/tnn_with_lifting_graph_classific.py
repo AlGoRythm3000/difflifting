@@ -232,10 +232,10 @@ class TNN_KNN_MLP_G(nn.Module):
         data = batch
         if self.diff_lifting:
             x, edge_index = data.x.float(), data.edge_index
-            print("Initial data.x shape:", data.x.shape)  # Initial shape
+            #print("Initial data.x shape:", data.x.shape)  # Initial shape
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
 
-            print("number of edges: ", edge_index_undirected.size(1))
+            #print("number of edges: ", edge_index_undirected.size(1))
             embeddings = self.gnn(data)
 
             # Keep gradient through mean operation
@@ -248,7 +248,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
             k_sample = F.gumbel_softmax(k_logits, tau=1.0, hard=True)
 
-            print("k_sample:", k_sample)
+            #print("k_sample:", k_sample)
 
             k_range = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=k_logits.dtype)
 
@@ -258,7 +258,7 @@ class TNN_KNN_MLP_G(nn.Module):
             # Compute the differentiable integer sample as the dot product of the one-hot vector and the range tensor.
             k_v = torch.sum(k_sample * k_range, dim=-1)  # Shape: [1]
 
-            print("k_v:", k_v)
+            #print("k_v:", k_v)
             #print("k_v grad:", k_v.grad)
 
             self.k_v = k_v
@@ -305,7 +305,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 #print("incidence matrix before concatenation:", incidence_matrix_1.shape)
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
 
-                print("incidence matrix after concatenation:", incidence_matrix_1.shape)
+                #print("incidence matrix after concatenation:", incidence_matrix_1.shape)
                 #print(incidence_matrix_1.grad_fn)
                 
                 data.x_0 = x.float()
