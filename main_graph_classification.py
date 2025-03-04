@@ -79,6 +79,8 @@ if __name__ == '__main__':
         evaluator = Evaluator(args.dataset)
 
 
+    
+    k_vs = []  # list to track chosen k_v for each epoch
 
     for epoch in range(1, args.max_epochs):
         train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
@@ -100,6 +102,10 @@ if __name__ == '__main__':
 
         train_losses.append(train_loss)  # train losses
 
+        if hasattr(model, 'k_v'):
+            k_vs.append(model.k_v.item())
+        else:
+            k_vs.append(None)
         print(
             f"{epoch:3d}: Train Loss: {train_loss:.3f},"
             f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
@@ -124,6 +130,7 @@ if __name__ == '__main__':
         "test_losses": tensor(test_losses),
         "val_accuracies": tensor(val_accuracies),
         "val_losses": tensor(val_losses),
+        "k_vs": k_vs,  
         "params": {
             "gnn": args.gnn,
             "num_layers_gnn": args.num_layers_gnn,
