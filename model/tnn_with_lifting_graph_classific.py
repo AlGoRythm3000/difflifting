@@ -239,7 +239,7 @@ class TNN_KNN_MLP_G(nn.Module):
             embeddings = self.gnn(data)
 
             # Keep gradient through mean operation
-            embedding_mean = embeddings.mean(dim=0, keepdim=True)
+            embedding_mean = embeddings
 
             #print("embeddings requires_grad:", embeddings.requires_grad)
 
@@ -273,10 +273,12 @@ class TNN_KNN_MLP_G(nn.Module):
             distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
             if self.tnn_type == "UniGCNII" or self.tnn_type == "AST":
-                knn_indices = torch.topk(-distances, self.k_v.long().item(), dim=-1)[1]
-
-                #print("knn_indices: ", knn_indices.shape)
-
+                knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
+                aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
+                kv_mask = aranged_indices < k_v.unsqueeze(1)
+                first_neighbor = knn_indices[:, 0].unsqueeze(1)
+                knn_selected = torch.where(kv_mask, knn_indices, first_neighbor)
+                knn_indices = knn_selected
                 pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
                 include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
@@ -295,7 +297,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 mask = torch.zeros((num_nodes, num_nodes), device=data.x.device)
 
-                node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, self.k_v.long().item()))
+                node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, torch.max(self.k_v).long().item()))
 
                 # This is not used, but we keep it for future use
                 incidence_matrix_2 = incidence_matrix_1.T @ node_triangle_matrix
@@ -310,7 +312,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 
                 data.x_0 = x.float()
 
-                data.x_0 = torch.div(data.x_0, self.k_v)
+                data.x_0 = torch.div(data.x_0, torch.max(self.k_v))
 
                 #print("data.x_0 after division:", data.x_0.shape)
 
@@ -333,36 +335,36 @@ class TNN_KNN_MLP_G(nn.Module):
             else:
                 knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
 
-                print("knn_indices: ", knn_indices.shape, knn_indices)
+                # print("knn_indices: ", knn_indices.shape, knn_indices)
 
                 num_nodes, k = knn_indices.size()
                 embedding_dim = embeddings.size(1)
 
                 knn_embeddings = embeddings[knn_indices]  # Shape: [num_nodes, k, embedding_dim]
-                print("knn_embeddings: ", knn_embeddings.shape, knn_embeddings)
+                # print("knn_embeddings: ", knn_embeddings.shape, knn_embeddings)
                 central_embeddings = embeddings.unsqueeze(1).expand(-1, k, -1)  # Shape: [num_nodes, k, embedding_dim]
-                print("central_embeddings: ", central_embeddings.shape, central_embeddings)
+                # print("central_embeddings: ", central_embeddings.shape, central_embeddings)
                 edge_embeddings = torch.cat([central_embeddings, knn_embeddings],
                                             dim=-1)  # Shape: [num_nodes, k, 2 * embedding_dim]
-                print("edge_embeddings: ", edge_embeddings.shape, edge_embeddings)
+                # print("edge_embeddings: ", edge_embeddings.shape, edge_embeddings)
                 pooled_embeddings = edge_embeddings.mean(dim=2)  # Shape: [num_nodes, k, embedding_dim]
-                print("pooled_embeddings: ", pooled_embeddings.shape, pooled_embeddings)
+                # print("pooled_embeddings: ", pooled_embeddings.shape, pooled_embeddings)
                 include_probs = torch.sigmoid(self.mlp_cell(pooled_embeddings))  # Shape: [num_nodes, k]
-                print("include_probs: ", include_probs.shape, include_probs)
+                # print("include_probs: ", include_probs.shape, include_probs)
                 inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()  # Shape: [num_nodes, k]
-                print("inclusion_samples: ", inclusion_samples.shape, inclusion_samples)
+                # print("inclusion_samples: ", inclusion_samples.shape, inclusion_samples)
                 straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
-                print("straight_through_samples: ", straight_through_samples.shape, straight_through_samples)
+                # print("straight_through_samples: ", straight_through_samples.shape, straight_through_samples)
                 num_new_edges = num_nodes * k
                 new_sampled_incidence = torch.zeros((num_nodes, num_new_edges), device=embeddings.device)
-                print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
+                # print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
                 edge_indices = torch.arange(num_new_edges, device=embeddings.device).view(num_nodes,
                                                                                           k)  # Shape: [num_nodes, k]
-                print("edge_indices: ", edge_indices.shape, edge_indices)
-                print("edge_indices view", edge_indices.view(-1, 1).shape)
-                print("straight view", straight_through_samples.view(-1, 1).shape)
+                # print("edge_indices: ", edge_indices.shape, edge_indices)
+                # print("edge_indices view", edge_indices.view(-1, 1).shape)
+                # print("straight view", straight_through_samples.view(-1, 1).shape)
                 new_sampled_incidence.scatter_(1, edge_indices.view(-1, 1).T, straight_through_samples.view(-1, 1).T)
-                print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
+                # print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
 
                 num_edges = edge_index_undirected.size(1)
 
@@ -375,17 +377,17 @@ class TNN_KNN_MLP_G(nn.Module):
                 final_incidence = torch.cat([original_incidence_1, new_sampled_incidence],
                                             dim=1)  # Shape: [num_nodes, num_original_edges + num_new_edges]
 
-                print("final_incidence: ", final_incidence.shape, final_incidence)
+                # print("final_incidence: ", final_incidence.shape, final_incidence)
 
                 # (Optionally) Clone final_incidence if needed for future gradient tracking
                 final_incidence_1 = final_incidence.clone()  # For potential future gradient use
-                print("Cloned final_incidence_1: ", final_incidence_1.shape, final_incidence_1)
+                # print("Cloned final_incidence_1: ", final_incidence_1.shape, final_incidence_1)
 
                 k = edge_indices.size(1)  # Should be 3
 
                 edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Returns indices of non-zero entries
                 rows, cols = edge_indices  # Rows are node indices, cols are edge indices
-                print("original edge_index undirected: ", edge_index_undirected.shape)
+                # print("original edge_index undirected: ", edge_index_undirected.shape)
                 # Create a dictionary to map each edge index to its corresponding pair of nodes
                 edge_dict = {}
                 for node, edge in zip(rows.tolist(), cols.tolist()):
@@ -400,9 +402,9 @@ class TNN_KNN_MLP_G(nn.Module):
                 G = nx.Graph()
                 G.add_edges_from(edges)
 
-                print(f"Number of nodes: {G.number_of_nodes()}")
-                print(f"Number of edges: {G.number_of_edges()}")
-                print(f"Cycles: {nx.cycle_basis(G)}")
+                # print(f"Number of nodes: {G.number_of_nodes()}")
+                # print(f"Number of edges: {G.number_of_edges()}")
+                # print(f"Cycles: {nx.cycle_basis(G)}")
 
                 edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Indices of non-zero entries
                 rows, cols = edge_indices  # Rows are node indices, cols are edge indices

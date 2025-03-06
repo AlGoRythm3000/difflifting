@@ -1,16 +1,20 @@
 import torch
+from torchviz import make_dot
 from tqdm import tqdm
 
 
 def train(loader, model, loss_fn, optimizer, device):
     model.train()
     total_loss = 0
-    for batch in loader:
+    for batch in tqdm(loader):
         batch = batch.to(device)
         optimizer.zero_grad()
         out = model(batch)
+        make_dot(out, params=dict(model.named_parameters()), show_attrs=True).render('nn3', format="svg")
         loss = loss_fn(out.squeeze(), batch.y.squeeze()) / batch.num_graphs
         loss.backward()
+
+
         for name, param in model.named_parameters():
             if param.grad is None:
                 print(f"No gradient for {name}")

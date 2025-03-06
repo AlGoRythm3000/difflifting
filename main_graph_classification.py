@@ -103,7 +103,7 @@ if __name__ == '__main__':
         train_losses.append(train_loss)  # train losses
 
         if hasattr(model, 'k_v'):
-            k_vs.append(model.k_v.item())
+            k_vs.append(list(model.k_v))
         else:
             k_vs.append(None)
         print(
