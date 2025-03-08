@@ -102,10 +102,10 @@ if __name__ == '__main__':
 
         train_losses.append(train_loss)  # train losses
 
-        if hasattr(model, 'k_v'):
-            k_vs.append(list(model.k_v))
-        else:
-            k_vs.append(None)
+        # if hasattr(model, 'k_v'):
+        #     k_vs.append(torch.mean(model.k_v))
+        # else:
+        #     k_vs.append(None)
         print(
             f"{epoch:3d}: Train Loss: {train_loss:.3f},"
             f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
@@ -130,7 +130,7 @@ if __name__ == '__main__':
         "test_losses": tensor(test_losses),
         "val_accuracies": tensor(val_accuracies),
         "val_losses": tensor(val_losses),
-        "k_vs": k_vs,  
+        #"k_vs": k_vs,  
         "params": {
             "gnn": args.gnn,
             "num_layers_gnn": args.num_layers_gnn,
