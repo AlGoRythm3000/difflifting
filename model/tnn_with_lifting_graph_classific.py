@@ -116,11 +116,11 @@ class AttentionLifting(nn.Module):
 class TNN_KNN_MLP_G(nn.Module):
 
     def __init__(self, in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False, global_pool="sum",
-                 device="cpu", tnn_type="SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64):
+                 device="cpu", tnn_type="SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64, k_max=10):
         super(TNN_KNN_MLP_G, self).__init__()
         self.k = k
         self.k_min = 2
-        self.k_max = 10
+        self.k_max = k_max
 
         self.triangle_count = 0  # Add this to track triangles
         self.diff_lifting = diff_lifting

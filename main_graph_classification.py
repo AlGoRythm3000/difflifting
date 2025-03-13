@@ -130,11 +130,12 @@ if __name__ == '__main__':
         "test_losses": tensor(test_losses),
         "val_accuracies": tensor(val_accuracies),
         "val_losses": tensor(val_losses),
-        #"k_vs": k_vs,  
+          
         "params": {
             "gnn": args.gnn,
             "num_layers_gnn": args.num_layers_gnn,
             "gnn_embedding_dim": args.gnn_embedding_dim,
+            "k_max": args.k_max,
         },
     }
     if not os.path.exists(args.logdir):
