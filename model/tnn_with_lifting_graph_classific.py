@@ -145,7 +145,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 nn.Dropout(0.5),
                 nn.Linear(hidden_dim, 1),
             )
-            if tnn_type not in ["UniGCNII", "AST"]:
+            if tnn_type not in ["UniGCNII", "AST", "HyperGAT", "UniGIN"]:
                 self.mlp_cell = nn.Sequential(
                     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
                     nn.ReLU(),
@@ -272,7 +272,8 @@ class TNN_KNN_MLP_G(nn.Module):
 
             distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
-            if self.tnn_type == "UniGCNII" or self.tnn_type == "AST":
+            if (self.tnn_type == "UniGCNII" or self.tnn_type == "AST" or
+                self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN"):
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
                 aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)
@@ -483,14 +484,14 @@ class TNN_KNN_MLP_G(nn.Module):
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
         
-        print(data)
+        # print(data)
         data = self.feature_encoder(data)
-        print("data after feature encoder", data)
-        print("shapes before tnn: ", data["x_0"].shape)
+        # print("data after feature encoder", data)
+        # print("shapes before tnn: ", data["x_0"].shape)
         tnn_output = self.tnn(data)
-        print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
+        # print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
         out = self.readout(tnn_output, batch)
-        print(out)
+        # print(out)
         return out["logits"]
 
 
