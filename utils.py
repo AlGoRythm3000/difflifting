@@ -51,11 +51,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="GIN", choices=["GIN", "GPS"])
-    parser.add_argument("--tnn", type=str, default="UniGCNII", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "HyperGAT"])
+    parser.add_argument("--tnn", type=str, default="CWN", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "HyperGAT"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="NCI1",
+        default="MUTAG",
         choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY","REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(

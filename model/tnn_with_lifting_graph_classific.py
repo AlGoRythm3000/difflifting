@@ -393,14 +393,38 @@ class TNN_KNN_MLP_G(nn.Module):
                 target_embeddings = embeddings[edge_indices_knn[1]]  # Shape: [num_selected_edges, embedding_dim]
                 edge_embeddings = torch.cat([source_embeddings, target_embeddings], dim=-1)  # Shape: [num_selected_edges, 2 * embedding_dim]
 
-                edge_logits = torch.softmax(self.edge_mlp(edge_embeddings), dim=-1)
+                # Step 2: Compute logits and sharpen probabilities
+                edge_logits = self.edge_mlp(edge_embeddings)  # Shape: [num_edges, 2]
 
-                edge_classes= torch.argmax(edge_logits, dim=-1)
+                # Define the sharpening factor directly in the code
+                sharpening_factor = 10.0  # Example value for sharpening
 
+                # Apply sharpening to logits and compute probabilities
+                edge_probs = torch.softmax(edge_logits * sharpening_factor, dim=-1)[:, 1]  # Sharpened probability of class 1
+
+                # Step 3: Apply straight-through estimator
+                edge_classes = (edge_probs > 0.5).float()  # Binary values (0 or 1) during forward pass
+                edge_classes = edge_classes + (edge_probs - edge_probs.detach())  # Preserve gradients
+
+                # Step 4: Construct the incidence matrix using scatter
                 num_nodes = embeddings.size(0)
-                num_edges = edge_indices_knn.size(1)
+                num_edges_sampled = edge_indices_knn.size(1)
+                num_edges = edge_index_undirected.size(1)
 
-                incidence_matrix = torch.zeros((num_nodes, num_edges), device=embeddings.device)                
+                incidence_matrix_sampled = torch.zeros((num_nodes, num_edges_sampled), device=embeddings.device)
+
+                # Scatter edge_classes into the incidence matrix
+                incidence_matrix_sampled.scatter(0, edge_indices_knn[0].unsqueeze(0), edge_classes.unsqueeze(0))
+                incidence_matrix_sampled.scatter(0, edge_indices_knn[1].unsqueeze(0), edge_classes.unsqueeze(0))
+
+                incidence_matrix_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
+
+                for idx, edge in enumerate(edge_index_undirected.T):
+                    incidence_matrix_1[edge[0], idx] = 1
+                    incidence_matrix_1[edge[1], idx] = 1
+
+                incidence_matrix_1 = torch.cat((incidence_matrix_1, incidence_matrix_sampled), dim=1)
+                # incidence_matrix_1 = torch.Tensor(incidence_matrix_1).to_sparse_coo()
 
                 #embeddings[]
                 # node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
@@ -413,7 +437,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 data_for_lifting = {
                     "x_0": x.float(),  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
-                    "incidence_2": incidence_matrix_2,  # edge_to-triangle
+                    "incidence_2": incidence_matrix_1.T,  # edge_to-triangle
                 }
 
                 lifted_data = self.projection_sum(data_for_lifting)
