@@ -1,14 +1,16 @@
 from topomodelx.nn.cell.ccxn import CCXN
 from topomodelx.nn.cell.cwn import CWN
 from topomodelx.nn.hypergraph.allset_transformer import AllSetTransformer
-from topomodelx.nn.hypergraph.hypersage import HyperSAGE
+from topomodelx.nn.hypergraph.unisage import UniSAGE
 from topomodelx.nn.hypergraph.unigin import UniGIN
+from topomodelx.nn.hypergraph.unigcn import UniGCN
 
 from layers.hypergnns.hypergat import HyperGAT
 from topomodelx.nn.simplicial.scn2 import SCN2
 from torch import nn
 from torch_geometric.nn import global_mean_pool
 
+from layers.unignns.unigat import UniGAT
 from tools.normalize import normalize_matrix
 
 
@@ -23,13 +25,19 @@ class TNN(nn.Module):
             self.base_model =  CCXN(in_channels, in_channels, in_channels, n_layers=n_layers).to(device)
         elif model_type == "UniGCNII":
             self.base_model =  UniGCNII(in_channels, in_channels).to(device)
+        elif model_type == "UniSAGE":
+            self.base_model =  UniSAGE(in_channels, in_channels).to(device)
+        elif model_type == "UniGAT":
+            self.base_model =  UniGAT(in_channels, in_channels).to(device)
+        elif model_type == "UniGCN":
+            self.base_model = UniGCN(in_channels, in_channels).to(device)
         elif model_type == "HyperGAT":
             self.base_model = HyperGAT(in_channels, in_channels, n_layers=n_layers).to(device)
         elif model_type == "UniGIN":
             self.base_model = UniGIN(in_channels, in_channels, n_layers=n_layers).to(device)
         elif model_type == "AST":
             self.base_model =  AllSetTransformer(in_channels, in_channels,  n_layers=n_layers, n_heads=4).to(device)
-        
+        self.incidence_models = ["UniGCN", "HyperGAT", "UniGIN", "UniSAGE"]
         print("Type of base_model:", type(self.base_model))
         self.pooling_fun = global_mean_pool
         self.normalize_laplacians = normalize_laplacians
@@ -61,7 +69,7 @@ class TNN(nn.Module):
             model_out["x_1"] = x[1]
 
             return model_out
-        elif self.model_type == "HyperGAT" or self.model_type=="UniGIN":
+        elif self.model_type in self.incidence_models:
 
             x = self.base_model(data.x_0, data.incidence_1)
 

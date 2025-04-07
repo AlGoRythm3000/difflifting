@@ -186,7 +186,7 @@ class HyperGATLayer(MessagePassing):
 
         self.target_index_i, self.source_index_j = incidence_1.indices()
 
-        attention_values = self.attention(intra_aggregation).squeeze()
+        attention_values = self.attention(intra_aggregation, mechanism="edge-level").squeeze()
         incidence_with_attention = torch.sparse_coo_tensor(
             indices=incidence_1.indices(),
             values=incidence_1.values() * attention_values,

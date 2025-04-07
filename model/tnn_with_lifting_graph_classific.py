@@ -145,7 +145,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 nn.Dropout(0.5),
                 nn.Linear(hidden_dim, 1),
             )
-            if tnn_type not in ["UniGCNII", "AST", "HyperGAT", "UniGIN"]:
+            if tnn_type not in ["UniGCNII", "UniGCN","AST", "HyperGAT", "UniGIN", "UniSAGE"]:
                 self.mlp_cell = nn.Sequential(
                     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
                     nn.ReLU(),
@@ -272,8 +272,8 @@ class TNN_KNN_MLP_G(nn.Module):
 
             distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
-            if (self.tnn_type == "UniGCNII" or self.tnn_type == "AST" or
-                self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN"):
+            if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or
+                self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
                 aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)

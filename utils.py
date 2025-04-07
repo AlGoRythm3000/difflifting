@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="GIN", choices=["GIN", "GPS"])
-    parser.add_argument("--tnn", type=str, default="UniGCNII", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "HyperGAT"])
+    parser.add_argument("--tnn", type=str, default="UniGCNII", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT"])
     parser.add_argument(
         "--dataset",
         type=str,
@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
         default="diffLifting",
         choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting", "HypergraphKHopLifting"],
     )
-    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
