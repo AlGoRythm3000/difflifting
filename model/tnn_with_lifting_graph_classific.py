@@ -5,6 +5,8 @@ import torch_geometric
 from torch_geometric.nn import global_mean_pool
 from torch_geometric.utils import is_undirected
 from torch_geometric.utils import to_undirected
+from torch_geometric.data import Data
+
 
 import torch.nn.functional as F
 
@@ -127,8 +129,8 @@ class TNN_KNN_MLP_G(nn.Module):
         self.tnn_type = tnn_type
         self.num_classes = num_classes
 
-        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels], out_channels=hidden_dim,
-                                                     proj_dropout=0.5)
+        #self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels], out_channels=hidden_dim,
+        #                                             proj_dropout=0.5)
         if diff_lifting:
 
             if args.gnn == "GIN":
@@ -137,36 +139,38 @@ class TNN_KNN_MLP_G(nn.Module):
                 self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn).to(device)
             self.pool = global_mean_pool
             self.k = k
-            self.mlp = nn.Sequential(
-                nn.Linear(embedding_dim, 2 * hidden_dim),
-                nn.ReLU(),
-                nn.Linear(2 * hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(hidden_dim, 1),
-            )
-            if tnn_type not in ["UniGCNII", "AST", "HyperGAT", "UniGIN"]:
-                self.mlp_cell = nn.Sequential(
-                    nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
+
+            if tnn_type in ["UniGCNII", "AST", "HyperGAT", "UniGIN"]:
+                self.mlp = nn.Sequential(
+                    nn.Linear(embedding_dim, 2 * hidden_dim),
                     nn.ReLU(),
                     nn.Linear(2 * hidden_dim, hidden_dim),
                     nn.ReLU(),
                     nn.Dropout(0.5),
-                    nn.Linear(hidden_dim, k),  # Output k features
+                    nn.Linear(hidden_dim, 1),
                 )
+            if tnn_type not in ["UniGCNII", "AST", "HyperGAT", "UniGIN"]:
+                # self.mlp_cell = nn.Sequential(
+                #     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
+                #     nn.ReLU(),
+                #     nn.Linear(2 * hidden_dim, hidden_dim),
+                #     nn.ReLU(),
+                #     nn.Dropout(0.5),
+                #     nn.Linear(hidden_dim, k),  # Output k features
+                # )
                 self.edge_mlp = nn.Sequential(
                     nn.Linear(2 * embedding_dim, 64),  # Input: concatenated edge embeddings
                     nn.ReLU(),
                     nn.Linear(64, 2)  # Output logits for two classes (0 and 1)
                 )
-                self.mlp_cell2 = nn.Sequential(
-                    nn.Linear(128, 2 * hidden_dim),  # Change input dimension to 128
-                    nn.ReLU(),
-                    nn.Linear(2 * hidden_dim, hidden_dim),
-                    nn.ReLU(),
-                    nn.Dropout(0.5),
-                    nn.Linear(hidden_dim, 1),  # Output: probability per cycle
-                )
+                # self.mlp_cell2 = nn.Sequential(
+                #     nn.Linear(128, 2 * hidden_dim),  # Change input dimension to 128
+                #     nn.ReLU(),
+                #     nn.Linear(2 * hidden_dim, hidden_dim),
+                #     nn.ReLU(),
+                #     nn.Dropout(0.5),
+                #     nn.Linear(hidden_dim, 1),  # Output: probability per cycle
+                # )
             self.k_mlp = torch.nn.Sequential(
                 torch.nn.Linear(embedding_dim, 64),
                 torch.nn.ReLU(),
@@ -186,8 +190,7 @@ class TNN_KNN_MLP_G(nn.Module):
             device=device
         )
 
-        #self.classifier = nn.Linear(hidden_dim, num_classes)
-
+        
         if args.no_readout:
             self.readout = DirectReadout(**{
                 "readout_name": "DirectReadout",
@@ -347,46 +350,46 @@ class TNN_KNN_MLP_G(nn.Module):
                 knn_selected = torch.where(kv_mask, knn_indices, first_neighbor)
                 knn_indices = knn_selected
                 
-                print("knn_indices: ", knn_indices)
+                #print("knn_indices: ", knn_indices)
 
                 # Assuming knn_indices is a tensor of shape [num_nodes, k_edges]
-                print("Original knn_indices tensor:")
-                print(knn_indices)  # Display the knn_indices tensor for reference
+                #print("Original knn_indices tensor:")
+                #print(knn_indices)  # Display the knn_indices tensor for reference
 
                 # Get the shape: number of nodes and number of candidate neighbors per node
                 num_nodes, k_edges = knn_indices.shape
-                print("Step 1: Determine shape of knn_indices")
-                print("Number of nodes:", num_nodes)
-                print("Number of candidate neighbors per node (k_edges):", k_edges)
+                #print("Step 1: Determine shape of knn_indices")
+                #print("Number of nodes:", num_nodes)
+                #print("Number of candidate neighbors per node (k_edges):", k_edges)
 
                 # Create a tensor of node indices: [0, 1, 2, ..., num_nodes-1]
                 node_indices = torch.arange(num_nodes, device=knn_indices.device)
-                print("Step 2: Create node_indices tensor")
-                print("node_indices before unsqueeze:", node_indices)
+                #print("Step 2: Create node_indices tensor")
+                #print("node_indices before unsqueeze:", node_indices)
 
                 # Unsqueeze to make it a column vector of shape [num_nodes, 1]
                 node_indices = node_indices.unsqueeze(1)
-                print("Step 3: node_indices after unsqueeze (shape [num_nodes, 1]):")
-                print(node_indices)
+                #print("Step 3: node_indices after unsqueeze (shape [num_nodes, 1]):")
+                #print(node_indices)
 
                 # Expand node_indices to repeat each node index for each candidate neighbor.
                 # After expansion, node_indices has shape [num_nodes, k_edges]
                 node_indices = node_indices.expand(num_nodes, k_edges)
-                print("Step 4: node_indices after expand (shape [num_nodes, k_edges]):")
-                print(node_indices)
+                #print("Step 4: node_indices after expand (shape [num_nodes, k_edges]):")
+                #print(node_indices)
 
                 # Reshape both node_indices and knn_indices to a flat vector so that each element corresponds to an edge.
                 node_indices_flat = node_indices.reshape(-1)
                 knn_indices_flat = knn_indices.reshape(-1)
-                print("Step 5: Flatten node_indices and knn_indices:")
-                print("Flattened node_indices:", node_indices_flat)
-                print("Flattened knn_indices:", knn_indices_flat)
+                #print("Step 5: Flatten node_indices and knn_indices:")
+                #print("Flattened node_indices:", node_indices_flat)
+                #print("Flattened knn_indices:", knn_indices_flat)
 
                 # Stack the flattened node_indices and knn_indices to form an edge_index tensor.
                 # The resulting edge_index tensor will have shape [2, num_nodes * k_edges],
                 # where the first row is the source node and the second row is the target node.
                 edge_indices_knn = torch.stack([node_indices_flat, knn_indices_flat], dim=0)
-                print("Step 6: Final edge_indices_knn tensor (edge index):")
+                #print("Step 6: Final edge_indices_knn tensor (edge index):")
                 print(edge_indices_knn)
 
                 source_embeddings = embeddings[edge_indices_knn[0]]  # Shape: [num_selected_edges, embedding_dim]
@@ -406,6 +409,12 @@ class TNN_KNN_MLP_G(nn.Module):
                 edge_classes = (edge_probs > 0.5).float()  # Binary values (0 or 1) during forward pass
                 edge_classes = edge_classes + (edge_probs - edge_probs.detach())  # Preserve gradients
 
+                # Debugging prints for gradient tracking
+                print("edge_probs requires_grad:", edge_probs.requires_grad)
+                print("edge_probs grad_fn:", edge_probs.grad_fn)
+                print("edge_classes requires_grad:", edge_classes.requires_grad)
+                print("edge_classes grad_fn:", edge_classes.grad_fn)
+
                 # Step 4: Construct the incidence matrix using scatter
                 num_nodes = embeddings.size(0)
                 num_edges_sampled = edge_indices_knn.size(1)
@@ -417,6 +426,10 @@ class TNN_KNN_MLP_G(nn.Module):
                 incidence_matrix_sampled.scatter(0, edge_indices_knn[0].unsqueeze(0), edge_classes.unsqueeze(0))
                 incidence_matrix_sampled.scatter(0, edge_indices_knn[1].unsqueeze(0), edge_classes.unsqueeze(0))
 
+                # Debugging prints for incidence_matrix_sampled
+                print("incidence_matrix_sampled requires_grad:", incidence_matrix_sampled.requires_grad)
+                print("incidence_matrix_sampled grad_fn:", incidence_matrix_sampled.grad_fn)
+
                 incidence_matrix_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
 
                 for idx, edge in enumerate(edge_index_undirected.T):
@@ -424,6 +437,31 @@ class TNN_KNN_MLP_G(nn.Module):
                     incidence_matrix_1[edge[1], idx] = 1
 
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, incidence_matrix_sampled), dim=1)
+                
+                print("incidence_matrix_1 requires_grad:", incidence_matrix_1.requires_grad)
+                print("incidence_matrix_sampled requires_grad:", incidence_matrix_sampled.requires_grad)
+                print("Gradient function of incidence_matrix_1:", incidence_matrix_1.grad_fn)
+                print("Gradient function of incidence_matrix_sampled:", incidence_matrix_sampled.grad_fn)
+                print("incidence_matrix_1:", incidence_matrix_1)
+                print("incidence_matrix_sampled:", incidence_matrix_sampled)
+                # Step 1: compute edge-edge adjacency via shared face
+                # Step 1: Build adjacency matrix
+                A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
+
+                # Step 2: Remove diagonal (self-loops)
+                A.fill_diagonal_(0)
+
+                # Step 3: Replace all 2s with 1, keeping 0s and 1s untouched (differentiably!)
+                A = torch.minimum(A, torch.ones_like(A))
+
+                # Step 4: Store
+                data.adjacency_1 = A
+
+                # Optional: print check
+                #print("Unique values in adjacency_1:", A.unique())
+
+                #print(data.adjacency_1)
+                #print(data.adjacency_1.shape)
                 # incidence_matrix_1 = torch.Tensor(incidence_matrix_1).to_sparse_coo()
 
                 #embeddings[]
@@ -438,17 +476,36 @@ class TNN_KNN_MLP_G(nn.Module):
                     "x_0": x.float(),  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                     "incidence_2": incidence_matrix_1.T,  # edge_to-triangle
+                    "adjacency_1": A
                 }
 
                 lifted_data = self.projection_sum(data_for_lifting)
+                #print("Lifted data keys:", lifted_data.keys())
+                #print(lifted_data)
+                # for key, value in lifted_data.items():
+                #     print(f"Key: {key}, Shape: {value.shape if isinstance(value, torch.Tensor) else 'Not a Tensor'}")
+                # print("Data keys:", data.keys)
+                # print(data)
 
-                data.x_0 = x.float()
+                #data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
+                
+                lifted_data["adjacency_1"] = A
+                print(lifted_data)
+                lifted_data["x_0"] = torch.div(lifted_data["x_0"], torch.max(self.k_v))
+                #print(lifted_data)
+                lifted_data_obj = Data(**lifted_data)
+                tnn_output = self.tnn(lifted_data_obj)
+                # print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
+                batch["incidence_1"]= incidence_matrix_1
 
-                data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
+                batch["incidence_2"]= incidence_matrix_1.T
+                out = self.readout(tnn_output, batch)
+                # print(out)
+                return out["logits"]
 
         
-        # print(data)
-        data = self.feature_encoder(data)
+        #print("data ": data)
+        #data = self.feature_encoder(data)
         # print("data after feature encoder", data)
         # print("shapes before tnn: ", data["x_0"].shape)
         tnn_output = self.tnn(data)
