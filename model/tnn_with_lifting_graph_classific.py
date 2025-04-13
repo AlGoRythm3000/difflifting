@@ -410,50 +410,91 @@ class TNN_KNN_MLP_G(nn.Module):
                 edge_classes = edge_classes + (edge_probs - edge_probs.detach())  # Preserve gradients
 
                 # Debugging prints for gradient tracking
-                print("edge_probs requires_grad:", edge_probs.requires_grad)
-                print("edge_probs grad_fn:", edge_probs.grad_fn)
-                print("edge_classes requires_grad:", edge_classes.requires_grad)
-                print("edge_classes grad_fn:", edge_classes.grad_fn)
+                # print("edge_probs requires_grad:", edge_probs.requires_grad)
+                # print("edge_probs grad_fn:", edge_probs.grad_fn)
+                # print("edge_classes requires_grad:", edge_classes.requires_grad)
+                # print("edge_classes grad_fn:", edge_classes.grad_fn)
 
                 # Step 4: Construct the incidence matrix using scatter
+                # Step 4: Construct incidence matrix as a sparse tensor with gradients
                 num_nodes = embeddings.size(0)
                 num_edges_sampled = edge_indices_knn.size(1)
-                num_edges = edge_index_undirected.size(1)
+                num_edges= edge_index_undirected.size(1)
+                # Prepare indices for sparse incidence matrix
+                rows_u = edge_indices_knn[0]  # Source nodes [num_edges_sampled]
+                rows_v = edge_indices_knn[1]  # Target nodes [num_edges_sampled]
+                cols = torch.arange(num_edges_sampled, device=edge_classes.device)  # Edge indices
 
-                incidence_matrix_sampled = torch.zeros((num_nodes, num_edges_sampled), device=embeddings.device)
+                # Stack indices for (u, edge) and (v, edge) pairs
+                indices_u = torch.stack([rows_u, cols], dim=0)
+                indices_v = torch.stack([rows_v, cols], dim=0)
+                all_indices = torch.cat([indices_u, indices_v], dim=1)  # [2, 2*num_edges_sampled]
 
-                # Scatter edge_classes into the incidence matrix
-                incidence_matrix_sampled.scatter(0, edge_indices_knn[0].unsqueeze(0), edge_classes.unsqueeze(0))
-                incidence_matrix_sampled.scatter(0, edge_indices_knn[1].unsqueeze(0), edge_classes.unsqueeze(0))
+                # Duplicate edge_classes for both nodes in each edge
+                all_values = torch.cat([edge_classes, edge_classes], dim=0)
 
-                # Debugging prints for incidence_matrix_sampled
-                print("incidence_matrix_sampled requires_grad:", incidence_matrix_sampled.requires_grad)
-                print("incidence_matrix_sampled grad_fn:", incidence_matrix_sampled.grad_fn)
+                # Create sparse incidence matrix with gradient tracking
+                incidence_matrix_sampled = torch.sparse_coo_tensor(
+                    indices=all_indices,
+                    values=all_values,
+                    size=(num_nodes, num_edges_sampled),
+                    device=edge_classes.device
+                ).coalesce()
 
-                incidence_matrix_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
-
+                # Now combine with original edges
+                original_incidence = torch.zeros(
+                    (num_nodes, num_edges), 
+                    device=embeddings.device
+                )
                 for idx, edge in enumerate(edge_index_undirected.T):
-                    incidence_matrix_1[edge[0], idx] = 1
-                    incidence_matrix_1[edge[1], idx] = 1
+                    original_incidence[edge[0], idx] = 1
+                    original_incidence[edge[1], idx] = 1
 
-                incidence_matrix_1 = torch.cat((incidence_matrix_1, incidence_matrix_sampled), dim=1)
+                # Convert to sparse and concatenate
+                original_incidence_sparse = original_incidence.to_sparse_coo()
+                incidence_matrix_1 = torch.cat(
+                    [original_incidence_sparse, incidence_matrix_sampled], 
+                    dim=1
+                )
+
+                # Ensure gradients flow through values
+                incidence_matrix_1 = incidence_matrix_1.coalesce()
+                incidence_matrix_1.requires_grad_(True)  # Explicitly enable gradients
+
+                # Pass through TNN
+                data_for_lifting = {
+                    "x_0": embeddings,  # Use GNN embeddings instead of raw features
+                    "incidence_1": incidence_matrix_1,
+                    "adjacency_1": (incidence_matrix_1 @ incidence_matrix_1.T).coalesce(),
+                }
                 
-                print("incidence_matrix_1 requires_grad:", incidence_matrix_1.requires_grad)
-                print("incidence_matrix_sampled requires_grad:", incidence_matrix_sampled.requires_grad)
-                print("Gradient function of incidence_matrix_1:", incidence_matrix_1.grad_fn)
-                print("Gradient function of incidence_matrix_sampled:", incidence_matrix_sampled.grad_fn)
-                print("incidence_matrix_1:", incidence_matrix_1)
-                print("incidence_matrix_sampled:", incidence_matrix_sampled)
-                # Step 1: compute edge-edge adjacency via shared face
+                # print("incidence_matrix_1 requires_grad:", incidence_matrix_1.requires_grad)
+                # print("incidence_matrix_sampled requires_grad:", incidence_matrix_sampled.requires_grad)
+                # print("Gradient function of incidence_matrix_1:", incidence_matrix_1.grad_fn)
+                # print("Gradient function of incidence_matrix_sampled:", incidence_matrix_sampled.grad_fn)
+                # print("incidence_matrix_1:", incidence_matrix_1)
+                # print("incidence_matrix_sampled:", incidence_matrix_sampled)
+                # # Step 1: compute edge-edge adjacency via shared face
+                # Step 1: Build adjacency matrix
                 # Step 1: Build adjacency matrix
                 A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
 
-                # Step 2: Remove diagonal (self-loops)
-                A.fill_diagonal_(0)
+                # Step 2: Remove diagonal (self-loops) using element-wise multiplication
+                num_tot_edges = A.size(0)
+                identity_indices = torch.arange(num_tot_edges, device=A.device).repeat(2, 1)
+                identity_values = torch.ones(num_tot_edges, device=A.device)
+                identity_mask = torch.sparse_coo_tensor(identity_indices, identity_values, size=A.size()).coalesce()
+
+                # Perform element-wise multiplication to remove diagonal entries
+                A = A * (1 - identity_mask.to_dense())
 
                 # Step 3: Replace all 2s with 1, keeping 0s and 1s untouched (differentiably!)
-                A = torch.minimum(A, torch.ones_like(A))
-
+                A = torch.sparse_coo_tensor(
+                    A.indices(),
+                    torch.clamp(A.values(), max=1),
+                    A.size(),
+                    device=A.device
+                ).coalesce()
                 # Step 4: Store
                 data.adjacency_1 = A
 
@@ -490,7 +531,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 #data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
                 
                 lifted_data["adjacency_1"] = A
-                print(lifted_data)
+                #print(lifted_data)
                 lifted_data["x_0"] = torch.div(lifted_data["x_0"], torch.max(self.k_v))
                 #print(lifted_data)
                 lifted_data_obj = Data(**lifted_data)

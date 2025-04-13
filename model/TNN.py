@@ -45,9 +45,9 @@ class TNN(nn.Module):
                             normalize_matrix(data.hodge_laplacian_1, 1),
                             normalize_matrix(data.hodge_laplacian_2, 2))
         elif self.model_type == "CWN":
-            print(f"Shape of edge features (x_1): {data.x_1.shape}")
-            print(f"Shape of adjacency matrix (adjacency_1): {data.adjacency_1.shape}")
-            print(f"Shape of incidence matrix (incidence_2): {data.incidence_2.shape}")
+            #print(f"Shape of edge features (x_1): {data.x_1.shape}")
+            #print(f"Shape of adjacency matrix (adjacency_1): {data.adjacency_1.shape}")
+            #print(f"Shape of incidence matrix (incidence_2): {data.incidence_2.shape}")
             x = self.base_model(data.x_0, data.x_1, data.x_2,
                             data.adjacency_1,
                             data.incidence_2,
@@ -183,14 +183,14 @@ class CWN(torch.nn.Module):
         x_2 : torch.Tensor, shape = (n_edges, in_channels_2)
             Final hidden states of the faces (2-cells).
         """
-        print("Initial x_0 shape:", x_0.shape)
-        print("Projection layer weights (proj_0):", self.proj_0.weight.shape)
+        #print("Initial x_0 shape:", x_0.shape)
+        #print("Projection layer weights (proj_0):", self.proj_0.weight.shape)
         x_0 = F.elu(self.proj_0(x_0))
-        print("Initial x_1 shape:", x_1.shape)
-        print("Projection layer weights (proj_1):", self.proj_1.weight.shape)
-        print("Projection layer bias (proj_1):", self.proj_1.bias.shape)
-        print("x_1 after projection:", self.proj_1(x_1).shape)
-        print("x_1 after applying ELU activation:", F.elu(self.proj_1(x_1)).shape)
+        #print("Initial x_1 shape:", x_1.shape)
+        #print("Projection layer weights (proj_1):", self.proj_1.weight.shape)
+        #print("Projection layer bias (proj_1):", self.proj_1.bias.shape)
+        #print("x_1 after projection:", self.proj_1(x_1).shape)
+        #print("x_1 after applying ELU activation:", F.elu(self.proj_1(x_1)).shape)
         x_1 = F.elu(self.proj_1(x_1))
         x_2 = F.elu(self.proj_2(x_2))
 
