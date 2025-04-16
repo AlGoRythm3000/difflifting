@@ -46,7 +46,7 @@ class AbstractZeroCellReadOut(torch.nn.Module):
         return f"{self.__class__.__name__}(task_level={self.task_level}, pooling_type={self.pooling_type})"
 
     def __call__(
-        self, model_out: dict, batch: torch_geometric.data.Data
+        self, model_out: dict, batch: torch_geometric.data.Data=None
     ) -> dict:
         """Readout logic based on model_output.
 
@@ -63,14 +63,18 @@ class AbstractZeroCellReadOut(torch.nn.Module):
             Dictionary containing the updated model output.
         """
         model_out = self.forward(model_out, batch)
-
-        model_out["logits"] = self.compute_logits(
-            model_out["x_0"], batch["batch_0"]
-        )
+        if batch is not None:
+            model_out["logits"] = self.compute_logits(
+                model_out["x_0"], batch["batch_0"]
+            )
+        else:
+            model_out["logits"] = self.compute_logits(
+                model_out["x_0"]
+            )
 
         return model_out
 
-    def compute_logits(self, x, batch):
+    def compute_logits(self, x, batch=None):
         r"""Compute logits based on the readout layer.
 
         Parameters
@@ -92,7 +96,7 @@ class AbstractZeroCellReadOut(torch.nn.Module):
         return self.linear(x)
 
     @abstractmethod
-    def forward(self, model_out: dict, batch: torch_geometric.data.Data):
+    def forward(self, model_out: dict, batch: torch_geometric.data.Data=None):
         r"""Forward pass.
 
         Parameters
@@ -141,7 +145,7 @@ class PropagateSignalDown(AbstractZeroCellReadOut):
                 torch.nn.Linear(2 * hidden_dim, hidden_dim),
             )
 
-    def forward(self, model_out: dict, batch: torch_geometric.data.Data):
+    def forward(self, model_out: dict, batch: torch_geometric.data.Data=None):
         r"""Forward pass of the propagate signal down readout layer.
 
         The layer takes the embeddings of the cells of a certain order and applies a convolutional layer to them. Layer normalization is then applied to the features. The output is concatenated with the initial embeddings of the cells and the result is projected with the use of a linear layer to the dimensions of the cells of lower rank. The process is repeated until the nodes embeddings, which are the cells of rank 0, are reached.
@@ -159,9 +163,11 @@ class PropagateSignalDown(AbstractZeroCellReadOut):
             Dictionary containing the updated model output.
         """
         for i in self.dimensions:
+
             x_i = getattr(self, f"agg_conv_{i}")(
                 model_out[f"x_{i}"], batch[f"incidence_{i}"]
             )
+
             x_i = getattr(self, f"ln_{i}")(x_i)
             model_out[f"x_{i-1}"] = getattr(self, f"projector_{i}")(
                 torch.cat([x_i, model_out[f"x_{i-1}"]], dim=1)
@@ -190,7 +196,7 @@ class DirectReadout(AbstractZeroCellReadOut):
         # Pass all kwargs to the parent class
         super().__init__(**kwargs)
 
-    def forward(self, model_out: dict, batch: torch_geometric.data.Data):
+    def forward(self, model_out: dict, batch: torch_geometric.data.Data=None):
         r"""
         Forward pass for direct readout.
 
@@ -207,7 +213,10 @@ class DirectReadout(AbstractZeroCellReadOut):
             Dictionary containing the updated model output.
         """
         # Directly use `x_0` embeddings to compute logits
-        model_out["logits"] = self.compute_logits(
-            model_out["x_0"], batch["batch_0"]
-        )
+        if batch is not None:
+            model_out["logits"] = self.compute_logits(
+                model_out["x_0"], batch["batch_0"]
+            )
+        else:
+            model_out["logits"] = self.compute_logits(model_out["x_0"])
         return model_out

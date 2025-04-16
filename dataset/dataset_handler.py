@@ -10,6 +10,7 @@ from torch_geometric.datasets import ZINC, TUDataset
 import torch_geometric.transforms as T
 from torch_geometric.datasets import KarateClub
 from torch_geometric.datasets import Planetoid
+from torch_geometric.datasets import HeterophilousGraphDataset
 from torch_geometric.loader import DataLoader
 
 from preprocessing.equal_gauss_features.equal_gaus_features import EqualGausFeatures
@@ -22,7 +23,8 @@ from tools.lifting.neighboorhood_complex import NeighborhoodComplexLifting
 from tools.lifting.cycle_lifting import CellCycleLifting
 from tools.normalize import normalize_matrix
 
-NODES_PREDICTION_DATASET = ["CORA", "CITESEER", "PUBMED", "KARATECLUB"]
+NODES_PREDICTION_DATASET = ["Cora", "Citeseer", "Pubmed", "karate", "Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers"]
+HETEROPHILIC_DATASETS = ["Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers"]
 LIFTINGS = {
     "SimplicialCliqueLifting":SimplicialCliqueLifting,
     "NeighborhoodComplexLifting": NeighborhoodComplexLifting,
@@ -76,7 +78,7 @@ def get_ogb_data(name: str) -> PygGraphPropPredDataset:
 
 
     return dataset
-def get_data_loaders(train_set, val_set, test_set, batch_size):
+def get_data_loaders(train_set, val_set=None, test_set=None, batch_size=1):
     """Returns three DataLoaders from the given datasets.
 
     Args:
@@ -298,7 +300,7 @@ def remove_duplicated_edges(edge_index):
     return torch.tensor(list(arestas), dtype=torch.long).T
 
 
-def get_node_prediction_dataset(dataset, dim=None, seed=42):
+def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
     """Loads a dataset for node-level prediction tasks.
 
     Args:
@@ -309,32 +311,57 @@ def get_node_prediction_dataset(dataset, dim=None, seed=42):
     Returns:
         A tuple containing the DataLoaders for the training, validation, and testing sets.
     """
-    if dataset == "KARATECLUB":
+    if dataset == "karate":
         dataset = KarateClub()
-        data = dataset[0]
+        if args.lifting == "diffLifting":
+            data = dataset[0]
+        else:
+            data = lift_topology(dataset, args)[0]
         num_train_nodes = int(0.8 * data.num_nodes)
         data.train_mask = torch.zeros(data.num_nodes, dtype=bool)
         data.train_mask[:num_train_nodes] = True
         data.test_mask = ~data.train_mask
-        data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
+        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
         
-    elif dataset=="CORA":
+    elif dataset=="Cora":
         dataset = Planetoid(root='data', name='cora')
-        data = dataset[0]
-        data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
+        if args.lifting == "diffLifting":
+            data = dataset[0]
+        else:
+            data = lift_topology(dataset, args)[0]
+        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
         
-    elif dataset=="CITESEER":
+    elif dataset=="Citeseer":
         dataset = Planetoid(root='data', name='CiteSeer')
-        data = dataset[0]
-        data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
+        if args.lifting == "diffLifting":
+            data = dataset[0]
+        else:
+            data = lift_topology(dataset, args)[0]
+        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
 
-    elif dataset=="PUBMED":
+    elif dataset=="Pubmed":
         dataset = Planetoid(root='data', name='pubmed')
-        data = dataset[0]        
-        data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
-
-
-    return data, dataset.num_features, dataset.num_classes
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
+        if args.lifting == "diffLifting":
+            data = dataset[0]
+        else:
+            data = lift_topology(dataset, args)[0]
+        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
+    elif dataset in HETEROPHILIC_DATASETS:
+        dataset = HeterophilousGraphDataset(root='data', name=dataset)
+        if args.gnn == "GPS":
+            dataset = add_positional_encoding(args, dataset)
+        if args.lifting == "diffLifting":
+            data = dataset[0]
+        else:
+            data = lift_topology(dataset, args)[0]
+    dataloaders = get_data_loaders([data], [data], [data])
+    return dataloaders, dataset.num_features, dataset.num_classes
 
 def choose_dataset(args, device):
     """Chooses the appropriate dataset function based on the input data.
@@ -347,7 +374,7 @@ def choose_dataset(args, device):
         `get_node_prediction_dataset` or `get_graph_classification_dataset`.
     """
     if args.dataset in NODES_PREDICTION_DATASET:
-        return get_node_prediction_dataset(args.dataset)
+        return get_node_prediction_dataset(args.dataset, args)
     else:
         return get_graph_classification_dataset(args.dataset, args.batch_size, args, device)
 

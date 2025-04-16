@@ -55,8 +55,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="NCI1",
-        choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY","REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
+        default="Roman-empire",
+        choices=["Cora", "Citeseer", "Pubmed", "karate",   #Classic Node classification datasets
+                 "Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers", #Heterophilous Graph dataset
+                 "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
+                 "REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
         "--lifting",
@@ -64,10 +67,10 @@ def parse_args() -> argparse.Namespace:
         default="diffLifting",
         choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting", "HypergraphKHopLifting"],
     )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size.")
     parser.add_argument("--num_layers", type=int, default=1, help="Number of tnn layers.")
     parser.add_argument("--num_layers_gnn", type=int, default=1, help="Number of gnn layers ")
 
@@ -85,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positional_walking_len", type=int, default=20)
     parser.add_argument("--depth", type=int, default=2)
     parser.add_argument("--no_readout", action='store_false')
-    parser.add_argument("--signed", type=bool, default=False)
+    parser.add_argument("--signed", type=bool, default=True)
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
         "--deepset_aggr_type", type=str, default="sum", choices=["sum", "cat", "mean"]
