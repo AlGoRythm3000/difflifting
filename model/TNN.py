@@ -45,7 +45,7 @@ class TNN(nn.Module):
                             normalize_matrix(data.hodge_laplacian_1, 1),
                             normalize_matrix(data.hodge_laplacian_2, 2))
         elif self.model_type == "CWN":
-            #print(f"Shape of edge features (x_1): {data.x_1.shape}")
+            #print(f"Shape of cell features (x_2): {data.x_2.shape}")
             #print(f"Shape of adjacency matrix (adjacency_1): {data.adjacency_1.shape}")
             #print(f"Shape of incidence matrix (incidence_2): {data.incidence_2.shape}")
             x = self.base_model(data.x_0, data.x_1, data.x_2,
