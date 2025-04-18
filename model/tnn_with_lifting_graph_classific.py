@@ -283,6 +283,8 @@ class TNN_KNN_MLP_G(nn.Module):
             model_type=tnn_type,  # choose TNN model
             in_channels=embedding_dim,
             hidden_channels=hidden_dim,
+            in_channels_1=embedding_dim,
+            in_channels_2=embedding_dim,
             n_layers=num_layers_tnn,
             device=device
         )
@@ -651,7 +653,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 data_for_lifting = {}
 
                 data_for_lifting = {
-                    "x_0": x.float(),  # Node features
+                    "x_0": embeddings,  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                     "incidence_2": incidence_matrix_2,  # edge_to-triangle
                     "adjacency_1": A

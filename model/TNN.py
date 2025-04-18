@@ -132,7 +132,7 @@ class CWN(torch.nn.Module):
         **kwargs,
     ):
         super().__init__()
-        in_channels_0=7
+        # in_channels_0=7
         self.proj_0 = torch.nn.Linear(in_channels_0, hid_channels)
         self.proj_1 = torch.nn.Linear(in_channels_1, hid_channels)
         self.proj_2 = torch.nn.Linear(in_channels_2, hid_channels)
