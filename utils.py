@@ -55,8 +55,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="Roman-empire",
-        choices=["Cora", "Citeseer", "Pubmed", "karate",   #Classic Node classification datasets
+        default="Tolokers",
+        choices=["Cora", "Citeseer", "Pubmed",   #Classic Node classification datasets
                  "Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers", #Heterophilous Graph dataset
                  "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
                  "REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
@@ -64,10 +64,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lifting",
         type=str,
-        default="diffLifting",
+        default="HypergraphKHopLifting",
         choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "diffLifting", "HypergraphKHopLifting"],
     )
-    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size.")
@@ -76,6 +76,9 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
+    )
+    parser.add_argument(
+        "--number_of_mask", type=int, default=1, help="if the dataset is heterophyllic you have to choose from 0 to 9"
     )
     parser.add_argument("--early_stop_patience", type=int, default=50)
     parser.add_argument("--lr_decay_patience", type=int, default=10)
