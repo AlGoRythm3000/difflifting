@@ -470,7 +470,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # where the first row is the source node and the second row is the target node.
                 edge_indices_knn = torch.stack([node_indices_flat, knn_indices_flat], dim=0)
                 
-                print(edge_indices_knn)
+                # print(edge_indices_knn)
 
                 source_embeddings = embeddings[edge_indices_knn[0]]  # Shape: [num_selected_edges, embedding_dim]
                 target_embeddings = embeddings[edge_indices_knn[1]]  # Shape: [num_selected_edges, embedding_dim]
