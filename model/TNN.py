@@ -30,7 +30,7 @@ class TNN(nn.Module):
         elif model_type == "AST":
             self.base_model =  AllSetTransformer(in_channels, in_channels,  n_layers=n_layers, n_heads=4).to(device)
         
-        print("Type of base_model:", type(self.base_model))
+        #print("Type of base_model:", type(self.base_model))
         self.pooling_fun = global_mean_pool
         self.normalize_laplacians = normalize_laplacians
         self.model_type = model_type
