@@ -159,6 +159,19 @@ def compute_node_cell_matrix(
     cell_hard = (cell_probs > 0.5).float()                    # [C], 0 or 1
     cell_ste  = cell_hard + (cell_probs - cell_probs.detach())# [C], STE
 
+    # ⚠️ Check if no cycle was selected
+    if cell_ste.sum() == 0:
+        empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
+        empty_values = torch.empty((0,), device=device)
+        node_cell = torch.sparse_coo_tensor(
+            empty_indices,
+            empty_values,
+            size=(N, 0),
+            device=device
+        ).coalesce()
+        return pooled, node_cell
+
+
     # 5) Scatter these into a sparse [N, C] incidence matrix
     #    a) flatten real (node,cycle) pairs
     valid = (cycle_idx != -1)                                 # [C, L]
