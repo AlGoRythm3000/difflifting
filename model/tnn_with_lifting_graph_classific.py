@@ -626,30 +626,17 @@ class TNN_KNN_MLP_G(nn.Module):
                 cycles = [cycle for cycle in cycles if len(cycle) >= 3]  # Remove small cycles
                 
                 #print(cycles)
-
-                polled_cycles,node_cell_matrix=  compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
-
-
+                if len(cycles)>0:
+                    polled_cycles,node_cell_matrix=  compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
+                    incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
+                else:
+                    incidence_matrix_2= incidence_matrix_1.T
                 
-                incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
+                
                 # incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
 
 
-                # for node in range(num_nodes):
-
-                #     nn_node = knn_indices[node]
-
-                #     subg = subgraph(node + nn_node)
-                #     cells= cell_cycle(subg)
-
-                #     cells_logits = mlp(cells)
-
-                #     cells_sample = sampling(cells)
-
-                #     cells_node[node] = cells_sample
-
-                # incidence_2 
-
+                
                 data_for_lifting = {}
 
                 data_for_lifting = {
