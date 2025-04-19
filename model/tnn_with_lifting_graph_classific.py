@@ -626,12 +626,15 @@ class TNN_KNN_MLP_G(nn.Module):
                 cycles = [cycle for cycle in cycles if len(cycle) >= 3]  # Remove small cycles
                 
                 #print(cycles)
-                polled_cycles, node_cell_matrix = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
-
-                if node_cell_matrix._nnz() > 0:
-                    incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
+                if len(cycles)> 0:
+                    polled_cycles, node_cell_matrix = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
+                    if node_cell_matrix._nnz() > 0:
+                        incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
+                    else:
+                        incidence_matrix_2= incidence_matrix_1.T
                 else:
                     incidence_matrix_2= incidence_matrix_1.T
+
                 
                 
                 # incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
