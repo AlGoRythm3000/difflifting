@@ -218,34 +218,40 @@ def compute_node_cell_matrix(
     filtered_indices = indices[:, mask_cycles]
     filtered_values  = values[mask_cycles]
 
-    # 5. Remap old cycle IDs → compact [0 .. num_kept-1]
-    kept_cycles    = torch.nonzero(keep_mask, as_tuple=False).squeeze()  # old IDs
-    if kept_cycles.numel() == 0:  # No cycles to keep
-        empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
-        empty_values = torch.empty((0,), device=device)
-        node_cell_sampled = torch.sparse_coo_tensor(
-            empty_indices,
-            empty_values,
+    kept_cycles = torch.nonzero(keep_mask, as_tuple=False).view(-1)  
+    # now kept_cycles is always 1‑D, even if it has 0 or 1 element
+
+    if kept_cycles.numel() == 0:
+        # nothing kept → return empty [N,0]
+        empty_idx = torch.empty((2, 0), dtype=torch.long, device=device)
+        empty_val = torch.empty((0,), device=device)
+        node_cell_empty = torch.sparse_coo_tensor(
+            empty_idx, empty_val,
             size=(N, 0),
-            device=device
+            device=device,
+            requires_grad=True
         ).coalesce()
-        return pooled, node_cell_sampled
+        return pooled, node_cell_empty
 
-    new_cycle_ids  = torch.arange(kept_cycles.size(0), device=device)
-    old2new        = torch.full((C,), -1, dtype=torch.long, device=device)
-    old2new[kept_cycles] = new_cycle_ids
-    filtered_indices[1] = old2new[filtered_indices[1]]
+    # remap columns 0..C‑1 → 0..C'‑1
+    new_ids = torch.arange(kept_cycles.size(0), device=device)
+    old2new = torch.full((C,), -1, dtype=torch.long, device=device)
+    old2new[kept_cycles] = new_ids
 
-    # 6. Rebuild the filtered sparse incidence matrix
-    node_cell_sampled = torch.sparse_coo_tensor(
-        filtered_indices,
-        filtered_values,
+    # filter indices & values
+    mask_k = keep_mask[indices[1]]          # [K]
+    filt_idx = indices[:, mask_k]
+    filt_idx[1] = old2new[filt_idx[1]]
+    filt_val = values[mask_k]
+
+    node_cell_pruned = torch.sparse_coo_tensor(
+        filt_idx, filt_val,
         size=(N, kept_cycles.size(0)),
         device=device,
         requires_grad=True
     ).coalesce()
 
-    return pooled, node_cell_sampled
+    return pooled, node_cell_pruned
 
 class TNN_KNN_MLP_G(nn.Module):
 
