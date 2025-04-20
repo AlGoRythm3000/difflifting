@@ -197,7 +197,18 @@ def compute_node_cell_matrix(
 
     # 2. Mask of cycles to keep
     keep_mask = col_sums > 0  # [C] bool
-
+    if keep_mask.numel() == 0 or not keep_mask.any():  
+        # Check if keep_mask is empty
+        # Handle the case where no cycles are kept
+        empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
+        empty_values = torch.empty((0,), device=device)
+        node_cell_sampled = torch.sparse_coo_tensor(
+            empty_indices,
+            empty_values,
+            size=(N, 0),
+            device=device
+        ).coalesce()
+        return pooled, node_cell_sampled
     # 3. Duplicate mask to match the flattened indices length
     #    Here each index in `indices` refers directly to a cycle,
     #    so we just index by the second row:
