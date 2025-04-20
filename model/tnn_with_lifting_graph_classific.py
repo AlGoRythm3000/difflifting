@@ -220,6 +220,17 @@ def compute_node_cell_matrix(
 
     # 5. Remap old cycle IDs → compact [0 .. num_kept-1]
     kept_cycles    = torch.nonzero(keep_mask, as_tuple=False).squeeze()  # old IDs
+    if kept_cycles.numel() == 0:  # No cycles to keep
+        empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
+        empty_values = torch.empty((0,), device=device)
+        node_cell_sampled = torch.sparse_coo_tensor(
+            empty_indices,
+            empty_values,
+            size=(N, 0),
+            device=device
+        ).coalesce()
+        return pooled, node_cell_sampled
+
     new_cycle_ids  = torch.arange(kept_cycles.size(0), device=device)
     old2new        = torch.full((C,), -1, dtype=torch.long, device=device)
     old2new[kept_cycles] = new_cycle_ids
