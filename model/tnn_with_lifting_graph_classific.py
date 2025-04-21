@@ -685,9 +685,25 @@ class TNN_KNN_MLP_G(nn.Module):
                     if node_cell_matrix._nnz() > 0:
                         incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
                     else:
-                        incidence_matrix_2= incidence_matrix_1.T
+                        num_edges_fake = incidence_matrix_1.size(1)  # Number of edges
+                        dummy_indices = torch.empty((2, 0), dtype=torch.long, device=incidence_matrix_1.device)  # No non-zero entries
+                        dummy_values = torch.empty((0,), device=incidence_matrix_1.device)  # No values
+                        incidence_matrix_2 = torch.sparse_coo_tensor(
+                            dummy_indices,
+                            dummy_values,
+                            size=(num_edges_fake, 2),  # Two columns for two cells
+                            device=incidence_matrix_1.device
+                        ).coalesce()
                 else:
-                    incidence_matrix_2= incidence_matrix_1.T
+                    num_edges_fake = incidence_matrix_1.size(1)  # Number of edges
+                    dummy_indices = torch.empty((2, 0), dtype=torch.long, device=incidence_matrix_1.device)  # No non-zero entries
+                    dummy_values = torch.empty((0,), device=incidence_matrix_1.device)  # No values
+                    incidence_matrix_2 = torch.sparse_coo_tensor(
+                        dummy_indices,
+                        dummy_values,
+                        size=(num_edges_fake, 2),  # Two columns for two cells
+                        device=incidence_matrix_1.device
+                    ).coalesce()
 
                 
                 
