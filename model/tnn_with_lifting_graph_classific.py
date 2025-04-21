@@ -571,7 +571,8 @@ class TNN_KNN_MLP_G(nn.Module):
                 # 4. Filter indices & values
                 filtered_indices = all_indices[:, mask_pairs]
                 filtered_values  = all_values[mask_pairs]
-
+                
+                edge_sampling = True
                 # 5. Remap old edge‑column IDs → new compact range [0..num_kept-1]
                 kept_cols = torch.nonzero(keep_mask, as_tuple=False).view(-1)               # always 1‑D
                 if kept_cols.numel() == 0:
@@ -584,6 +585,8 @@ class TNN_KNN_MLP_G(nn.Module):
                         device=edge_classes.device,
                         requires_grad=True
                     ).coalesce()
+
+                    edge_sampling= False
                 else:
                     new_col_range = torch.arange(kept_cols.size(0), device=edge_classes.device)
                     old2new       = torch.full((num_edges_sampled,), -1, dtype=torch.long,
@@ -609,11 +612,15 @@ class TNN_KNN_MLP_G(nn.Module):
                     original_incidence[edge[0], idx] = 1
                     original_incidence[edge[1], idx] = 1
 
+                
                 original_incidence_sparse = original_incidence.to_sparse_coo()
-                incidence_matrix_1 = torch.cat(
-                    [original_incidence_sparse, incidence_matrix_sampled],
-                    dim=1
-                ).coalesce()
+                if edge_sampling:
+                    incidence_matrix_1 = torch.cat(
+                        [original_incidence_sparse, incidence_matrix_sampled],
+                        dim=1
+                    ).coalesce()
+                else:
+                    incidence_matrix_1 = original_incidence_sparse
                 incidence_matrix_1.requires_grad_(True)
                 
                 # # Step 1: compute edge-edge adjacency via shared face
