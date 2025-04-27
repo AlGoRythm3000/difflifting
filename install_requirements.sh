@@ -23,6 +23,7 @@ bibliotecas=(
     "git+https://github.com/pyt-team/TopoModelX.git"
     "networkx"
     "ogb"
+    "torchinfo==1.8.0"
 )
 
 # Instala as bibliotecas
