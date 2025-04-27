@@ -5,6 +5,10 @@ import torch_geometric
 from torch_geometric.nn import global_mean_pool
 from torch_geometric.utils import is_undirected
 from torch_geometric.utils import to_undirected
+from torch_geometric.data import Data
+
+from torch.nn.utils.rnn import pad_sequence
+
 
 import torch.nn.functional as F
 
@@ -113,6 +117,142 @@ class AttentionLifting(nn.Module):
         return data
 
 
+
+def compute_node_cell_matrix(
+    cycles: list[list[int]],
+    embeddings: torch.Tensor,
+    cell_mlp: torch.nn.Module,
+    sharpening_factor: float = 10.0
+):
+    """
+    cycles:    list of C cycles (each a list of node indices)
+    embeddings:[N, D] node embeddings
+    cell_mlp:  Module mapping [C, D] → [C, 2] logits
+    returns:
+      pooled:             [C, D] mean‑pooled cycle embeddings
+      incidence_sampled:  sparse [N, C] with STE inclusion values
+    """
+    device = embeddings.device
+    N, _ = embeddings.shape
+    C = len(cycles)
+
+    # 1) Pad cycles to [C, L]
+    cycle_tensors = [torch.tensor(c, dtype=torch.long, device=device) for c in cycles]
+    cycle_idx     = pad_sequence(cycle_tensors, batch_first=True, padding_value=-1)  # [C, L]
+    L             = cycle_idx.size(1)
+
+    # 2) Mean‑pool node embeddings per cycle → [C, D]
+    clamped = cycle_idx.clamp(min=0)                          # replace -1 with 0
+    gathered = embeddings[clamped]                            # [C, L, D]
+    mask = (cycle_idx != -1).unsqueeze(-1).float()            # [C, L, 1]
+    summed = (gathered * mask).sum(dim=1)                     # [C, D]
+    counts = mask.sum(dim=1).clamp(min=1)                     # [C, 1]
+    pooled = summed / counts                                  # [C, D]
+
+    # 3) Compute 2‑class logits & sharpened probabilities
+    #    just like your edge code, but on cycles
+    cell_logits = cell_mlp(pooled)                            # [C, 2]
+    sharp_logits = cell_logits * sharpening_factor            # [C, 2]
+    cell_probs = F.softmax(sharp_logits, dim=-1)[:, 1]         # sharpened p(class=1), [C]
+
+    # 4) Straight‑through estimator
+    cell_hard = (cell_probs > 0.5).float()                    # [C], 0 or 1
+    cell_ste  = cell_hard + (cell_probs - cell_probs.detach())# [C], STE
+
+    # ⚠️ Check if no cycle was selected
+    if cell_ste.sum() == 0:
+        empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
+        empty_values = torch.empty((0,), device=device)
+        node_cell = torch.sparse_coo_tensor(
+            empty_indices,
+            empty_values,
+            size=(N, 0),
+            device=device
+        ).coalesce()
+        return pooled, node_cell
+
+
+    # 5) Scatter these into a sparse [N, C] incidence matrix
+    #    a) flatten real (node,cycle) pairs
+    valid = (cycle_idx != -1)                                 # [C, L]
+    flat_nodes  = cycle_idx[valid]                            # [K]
+    flat_cycles = torch.arange(C, device=device)              \
+                     .unsqueeze(1).expand(-1, L)[valid]       # [K]
+    flat_vals   = cell_ste.unsqueeze(1).expand(-1, L)[valid]  # [K]
+
+    #    b) build COO sparse tensor
+    indices = torch.stack([flat_nodes, flat_cycles], dim=0)   # [2, K]
+    values  = flat_vals                                       # [K]
+    node_cell_sampled = torch.sparse_coo_tensor(
+        indices, values,
+        size=(N, C),
+        device=device,
+        requires_grad=True
+    ).coalesce()
+
+    ### >>>> REMOVE ALL‐ZERO COLUMNS (cycles) WITHOUT BREAKING GRADIENTS <<<< ###
+
+    # 1. Sum per cycle‐column to detect empty cycles
+    col_sums = torch.sparse.sum(node_cell_sampled, dim=0).to_dense()  # [C]
+
+    # 2. Mask of cycles to keep
+    keep_mask = col_sums > 0  # [C] bool
+    if keep_mask.numel() == 0 or not keep_mask.any():
+        # Check if keep_mask is empty
+        # Handle the case where no cycles are kept
+        empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
+        empty_values = torch.empty((0,), device=device)
+        node_cell_sampled = torch.sparse_coo_tensor(
+            empty_indices,
+            empty_values,
+            size=(N, 0),
+            device=device
+        ).coalesce()
+        return pooled, node_cell_sampled
+    # 3. Duplicate mask to match the flattened indices length
+    #    Here each index in `indices` refers directly to a cycle,
+    #    so we just index by the second row:
+    mask_cycles = keep_mask[indices[1]]  # [K]
+
+    # 4. Filter indices & values
+    filtered_indices = indices[:, mask_cycles]
+    filtered_values  = values[mask_cycles]
+
+    kept_cycles = torch.nonzero(keep_mask, as_tuple=False).view(-1)
+    # now kept_cycles is always 1‑D, even if it has 0 or 1 element
+
+    if kept_cycles.numel() == 0:
+        # nothing kept → return empty [N,0]
+        empty_idx = torch.empty((2, 0), dtype=torch.long, device=device)
+        empty_val = torch.empty((0,), device=device)
+        node_cell_empty = torch.sparse_coo_tensor(
+            empty_idx, empty_val,
+            size=(N, 0),
+            device=device,
+            requires_grad=True
+        ).coalesce()
+        return pooled, node_cell_empty
+
+    # remap columns 0..C‑1 → 0..C'‑1
+    new_ids = torch.arange(kept_cycles.size(0), device=device)
+    old2new = torch.full((C,), -1, dtype=torch.long, device=device)
+    old2new[kept_cycles] = new_ids
+
+    # filter indices & values
+    mask_k = keep_mask[indices[1]]          # [K]
+    filt_idx = indices[:, mask_k]
+    filt_idx[1] = old2new[filt_idx[1]]
+    filt_val = values[mask_k]
+
+    node_cell_pruned = torch.sparse_coo_tensor(
+        filt_idx, filt_val,
+        size=(N, kept_cycles.size(0)),
+        device=device,
+        requires_grad=True
+    ).coalesce()
+
+    return pooled, node_cell_pruned
+
 class TNN_KNN_MLP_G(nn.Module):
 
     def __init__(self, in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False, global_pool="sum",
@@ -127,8 +267,8 @@ class TNN_KNN_MLP_G(nn.Module):
         self.tnn_type = tnn_type
         self.num_classes = num_classes
 
-        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels], out_channels=hidden_dim,
-                                                     proj_dropout=0.5)
+        #self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels], out_channels=hidden_dim,
+        #                                             proj_dropout=0.5)
         if diff_lifting:
 
             if args.gnn == "GIN":
@@ -137,31 +277,38 @@ class TNN_KNN_MLP_G(nn.Module):
                 self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn).to(device)
             self.pool = global_mean_pool
             self.k = k
-            self.mlp = nn.Sequential(
-                nn.Linear(embedding_dim, 2 * hidden_dim),
-                nn.ReLU(),
-                nn.Linear(2 * hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(hidden_dim, 1),
-            )
+
+            if tnn_type in ["UniGCNII", "UniGCN","AST", "HyperGAT", "UniGIN", "UniSAGE"]:
+                self.mlp = nn.Sequential(
+                    nn.Linear(embedding_dim, 2 * hidden_dim),
+                    nn.ReLU(),
+                    nn.Linear(2 * hidden_dim, hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(0.5),
+                    nn.Linear(hidden_dim, 1),
+                )
             if tnn_type not in ["UniGCNII", "UniGCN","AST", "HyperGAT", "UniGIN", "UniSAGE"]:
-                self.mlp_cell = nn.Sequential(
-                    nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
+                # self.mlp_cell = nn.Sequential(
+                #     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
+                #     nn.ReLU(),
+                #     nn.Linear(2 * hidden_dim, hidden_dim),
+                #     nn.ReLU(),
+                #     nn.Dropout(0.5),
+                #     nn.Linear(hidden_dim, k),  # Output k features
+                # )
+                self.edge_mlp = nn.Sequential(
+                    nn.Linear(embedding_dim, 64),  # Input: concatenated edge embeddings
                     nn.ReLU(),
-                    nn.Linear(2 * hidden_dim, hidden_dim),
-                    nn.ReLU(),
-                    nn.Dropout(0.5),
-                    nn.Linear(hidden_dim, k),  # Output k features
+                    nn.Linear(64, 2)  # Output logits for two classes (0 and 1)
                 )
-                self.mlp_cell2 = nn.Sequential(
-                    nn.Linear(128, 2 * hidden_dim),  # Change input dimension to 128
-                    nn.ReLU(),
-                    nn.Linear(2 * hidden_dim, hidden_dim),
-                    nn.ReLU(),
-                    nn.Dropout(0.5),
-                    nn.Linear(hidden_dim, 1),  # Output: probability per cycle
-                )
+                # self.mlp_cell2 = nn.Sequential(
+                #     nn.Linear(128, 2 * hidden_dim),  # Change input dimension to 128
+                #     nn.ReLU(),
+                #     nn.Linear(2 * hidden_dim, hidden_dim),
+                #     nn.ReLU(),
+                #     nn.Dropout(0.5),
+                #     nn.Linear(hidden_dim, 1),  # Output: probability per cycle
+                # )
             self.k_mlp = torch.nn.Sequential(
                 torch.nn.Linear(embedding_dim, 64),
                 torch.nn.ReLU(),
@@ -175,13 +322,14 @@ class TNN_KNN_MLP_G(nn.Module):
 
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
-            in_channels=hidden_dim,
+            in_channels=embedding_dim,
             hidden_channels=hidden_dim,
+            in_channels_1=embedding_dim,
+            in_channels_2=embedding_dim,
             n_layers=num_layers_tnn,
             device=device
         )
 
-        #self.classifier = nn.Linear(hidden_dim, num_classes)
 
         if args.no_readout:
             self.readout = DirectReadout(**{
@@ -332,160 +480,273 @@ class TNN_KNN_MLP_G(nn.Module):
                 #print(out)
                 return out["logits"]    
 
-            ## AMAURI E DIEGO, ESSE else é para o celular, olhar o de cima
+            ## Now the Cellular Complex Diff Lifiting
             else:
-                knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
 
-                # print("knn_indices: ", knn_indices.shape, knn_indices)
+                knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
+                aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
+                kv_mask = aranged_indices < k_v.unsqueeze(1)
+                first_neighbor = knn_indices[:, 0].unsqueeze(1)
+                knn_selected = torch.where(kv_mask, knn_indices, first_neighbor)
+                knn_indices = knn_selected
 
-                num_nodes, k = knn_indices.size()
-                embedding_dim = embeddings.size(1)
 
-                knn_embeddings = embeddings[knn_indices]  # Shape: [num_nodes, k, embedding_dim]
-                # print("knn_embeddings: ", knn_embeddings.shape, knn_embeddings)
-                central_embeddings = embeddings.unsqueeze(1).expand(-1, k, -1)  # Shape: [num_nodes, k, embedding_dim]
-                # print("central_embeddings: ", central_embeddings.shape, central_embeddings)
-                edge_embeddings = torch.cat([central_embeddings, knn_embeddings],
-                                            dim=-1)  # Shape: [num_nodes, k, 2 * embedding_dim]
-                # print("edge_embeddings: ", edge_embeddings.shape, edge_embeddings)
-                pooled_embeddings = edge_embeddings.mean(dim=2)  # Shape: [num_nodes, k, embedding_dim]
-                # print("pooled_embeddings: ", pooled_embeddings.shape, pooled_embeddings)
-                include_probs = torch.sigmoid(self.mlp_cell(pooled_embeddings))  # Shape: [num_nodes, k]
-                # print("include_probs: ", include_probs.shape, include_probs)
-                inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()  # Shape: [num_nodes, k]
-                # print("inclusion_samples: ", inclusion_samples.shape, inclusion_samples)
-                straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
-                # print("straight_through_samples: ", straight_through_samples.shape, straight_through_samples)
-                num_new_edges = num_nodes * k
-                new_sampled_incidence = torch.zeros((num_nodes, num_new_edges), device=embeddings.device)
-                # print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
-                edge_indices = torch.arange(num_new_edges, device=embeddings.device).view(num_nodes,
-                                                                                          k)  # Shape: [num_nodes, k]
-                # print("edge_indices: ", edge_indices.shape, edge_indices)
-                # print("edge_indices view", edge_indices.view(-1, 1).shape)
-                # print("straight view", straight_through_samples.view(-1, 1).shape)
-                new_sampled_incidence.scatter_(1, edge_indices.view(-1, 1).T, straight_through_samples.view(-1, 1).T)
-                # print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
+                num_nodes, k_edges = knn_indices.shape
 
-                num_edges = edge_index_undirected.size(1)
+                node_indices = torch.arange(num_nodes, device=knn_indices.device)
 
-                original_incidence_1 = torch.zeros((data.x.size(0), num_edges), device=data.x.device)
+                # Unsqueeze to make it a column vector of shape [num_nodes, 1]
+                node_indices = node_indices.unsqueeze(1)
 
+                # Expand node_indices to repeat each node index for each candidate neighbor.
+                # After expansion, node_indices has shape [num_nodes, k_edges]
+                node_indices = node_indices.expand(num_nodes, k_edges)
+
+                # Reshape both node_indices and knn_indices to a flat vector so that each element corresponds to an edge.
+                node_indices_flat = node_indices.reshape(-1)
+                knn_indices_flat = knn_indices.reshape(-1)
+
+                # Stack the flattened node_indices and knn_indices to form an edge_index tensor.
+                # The resulting edge_index tensor will have shape [2, num_nodes * k_edges],
+                # where the first row is the source node and the second row is the target node.
+                edge_indices_knn = torch.stack([node_indices_flat, knn_indices_flat], dim=0)
+
+                # print(edge_indices_knn)
+
+                source_embeddings = embeddings[edge_indices_knn[0]]  # Shape: [num_selected_edges, embedding_dim]
+                target_embeddings = embeddings[edge_indices_knn[1]]  # Shape: [num_selected_edges, embedding_dim]
+                edge_embeddings = (source_embeddings + target_embeddings) /2
+                # Step 2: Compute logits and sharpen probabilities
+                edge_logits = self.edge_mlp(edge_embeddings)  # Shape: [num_edges, 2]
+
+                # Define the sharpening factor directly in the code
+                sharpening_factor = 10.0  # Example value for sharpening
+
+                # Apply sharpening to logits and compute probabilities
+                edge_probs = torch.softmax(edge_logits * sharpening_factor, dim=-1)[:, 1]  # Sharpened probability of class 1
+
+                # Step 3: Apply straight-through estimator
+                edge_classes = (edge_probs > 0.5).float()  # Binary values (0 or 1) during forward pass
+                edge_classes = edge_classes + (edge_probs - edge_probs.detach())  # Preserve gradients
+
+
+                                # Step 4: Construct incidence matrix as a sparse tensor with gradients
+                                # Step 4: Construct incidence matrix as a sparse tensor with gradients
+                num_nodes           = embeddings.size(0)
+                num_edges_sampled   = edge_indices_knn.size(1)
+                num_edges           = edge_index_undirected.size(1)
+
+                # Prepare indices for sparse incidence matrix
+                rows_u = edge_indices_knn[0]                         # [num_edges_sampled]
+                rows_v = edge_indices_knn[1]                         # [num_edges_sampled]
+                cols   = torch.arange(num_edges_sampled, device=edge_classes.device)
+
+                # Stack (node, edge) pairs twice: source and target
+                indices_u   = torch.stack([rows_u, cols], dim=0)     # [2, num_edges_sampled]
+                indices_v   = torch.stack([rows_v, cols], dim=0)
+                all_indices = torch.cat([indices_u, indices_v], dim=1)  # [2, 2*num_edges_sampled]
+
+                # Duplicate values for both ends of each edge
+                all_values = torch.cat([edge_classes, edge_classes], dim=0)  # [2*num_edges_sampled]
+
+                # Build the full sampled incidence matrix (sparse COO)
+                incidence_matrix_sampled = torch.sparse_coo_tensor(
+                    indices=all_indices,
+                    values=all_values,
+                    size=(num_nodes, num_edges_sampled),
+                    device=edge_classes.device
+                ).coalesce()
+
+                ### >>>> REMOVE ZERO‐ONLY COLUMNS (keep gradient) <<<< ###
+
+                # 1. Sum per column to detect non‑zero columns
+                col_sums   = torch.sparse.sum(incidence_matrix_sampled, dim=0).to_dense()  # [num_edges_sampled]
+
+                # 2. Boolean mask of columns to keep
+                keep_mask  = col_sums > 0                                                  # [num_edges_sampled]
+
+                # 3. Duplicate mask so it matches the doubled‑up indices
+                mask_pairs = torch.cat([keep_mask, keep_mask], dim=0)                      # [2 * num_edges_sampled]
+
+                # 4. Filter indices & values
+                filtered_indices = all_indices[:, mask_pairs]
+                filtered_values  = all_values[mask_pairs]
+
+                edge_sampling = True
+                # 5. Remap old edge‑column IDs → new compact range [0..num_kept-1]
+                kept_cols = torch.nonzero(keep_mask, as_tuple=False).view(-1)               # always 1‑D
+                if kept_cols.numel() == 0:
+                    # nothing kept → empty [num_nodes, 0]
+                    empty_idx = torch.empty((2, 0), dtype=torch.long, device=edge_classes.device)
+                    empty_val = torch.empty((0,),     device=edge_classes.device)
+                    incidence_matrix_sampled = torch.sparse_coo_tensor(
+                        empty_idx, empty_val,
+                        size=(num_nodes, 0),
+                        device=edge_classes.device,
+                        requires_grad=True
+                    ).coalesce()
+
+                    edge_sampling= False
+                else:
+                    new_col_range = torch.arange(kept_cols.size(0), device=edge_classes.device)
+                    old2new       = torch.full((num_edges_sampled,), -1, dtype=torch.long,
+                                            device=edge_classes.device)
+                    old2new[kept_cols] = new_col_range
+
+                    # apply the remapping
+                    filtered_indices[1] = old2new[filtered_indices[1]]
+
+                    # 6. Rebuild the filtered sparse incidence matrix
+                    incidence_matrix_sampled = torch.sparse_coo_tensor(
+                        indices=filtered_indices,
+                        values=filtered_values,
+                        size=(num_nodes, kept_cols.size(0)),
+                        device=edge_classes.device,
+                        requires_grad=True
+                    ).coalesce()
+
+                # Now combine with original edges
+                original_incidence = torch.zeros((num_nodes, num_edges),
+                                                device=embeddings.device)
                 for idx, edge in enumerate(edge_index_undirected.T):
-                    original_incidence_1[edge[0], idx] = 1
-                    original_incidence_1[edge[1], idx] = 1
+                    original_incidence[edge[0], idx] = 1
+                    original_incidence[edge[1], idx] = 1
 
-                final_incidence = torch.cat([original_incidence_1, new_sampled_incidence],
-                                            dim=1)  # Shape: [num_nodes, num_original_edges + num_new_edges]
 
-                # print("final_incidence: ", final_incidence.shape, final_incidence)
+                original_incidence_sparse = original_incidence.to_sparse_coo()
+                if edge_sampling:
+                    incidence_matrix_1 = torch.cat(
+                        [original_incidence_sparse, incidence_matrix_sampled],
+                        dim=1
+                    ).coalesce()
+                else:
+                    incidence_matrix_1 = original_incidence_sparse
+                incidence_matrix_1.requires_grad_(True)
 
-                # (Optionally) Clone final_incidence if needed for future gradient tracking
-                final_incidence_1 = final_incidence.clone()  # For potential future gradient use
-                # print("Cloned final_incidence_1: ", final_incidence_1.shape, final_incidence_1)
+                # # Step 1: compute edge-edge adjacency via shared face
+                # Step 1: Build adjacency matrix
+                A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
 
-                k = edge_indices.size(1)  # Should be 3
+                # Step 2: Remove diagonal (self-loops) using element-wise multiplication
+                num_tot_edges = A.size(0)
+                identity_indices = torch.arange(num_tot_edges, device=A.device).repeat(2, 1)
+                identity_values = torch.ones(num_tot_edges, device=A.device)
+                identity_mask = torch.sparse_coo_tensor(identity_indices, identity_values, size=A.size()).coalesce()
 
-                edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Returns indices of non-zero entries
-                rows, cols = edge_indices  # Rows are node indices, cols are edge indices
-                # print("original edge_index undirected: ", edge_index_undirected.shape)
-                # Create a dictionary to map each edge index to its corresponding pair of nodes
-                edge_dict = {}
-                for node, edge in zip(rows.tolist(), cols.tolist()):
-                    if edge not in edge_dict:
-                        edge_dict[edge] = [node]
+                # Perform element-wise multiplication to remove diagonal entries
+                A = A * (1 - identity_mask.to_dense())
+
+                # Step 3: Replace all 2s with 1, keeping 0s and 1s untouched (differentiably!)
+                A = torch.sparse_coo_tensor(
+                    A.indices(),
+                    torch.clamp(A.values(), max=1),
+                    A.size(),
+                    device=A.device
+                ).coalesce()
+                # Step 4: Store
+                data.adjacency_1 = A
+
+                A_0=  incidence_matrix_1 @ incidence_matrix_1.T
+
+                num_tot_edges = A_0.size(0)
+                identity_indices = torch.arange(num_nodes, device=A_0.device).repeat(2, 1)
+                identity_values = torch.ones(num_nodes, device=A_0.device)
+                identity_mask = torch.sparse_coo_tensor(identity_indices, identity_values, size=A_0.size()).coalesce()
+
+                A_0 = A_0 * (1 - identity_mask.to_dense())
+
+                # Step 3: Replace all 2s with 1, keeping 0s and 1s untouched (differentiably!)
+                A_0 = torch.sparse_coo_tensor(
+                    A_0.indices(),
+                    torch.clamp(A_0.values(), max=1),
+                    A_0.size(),
+                    device=A.device
+                ).coalesce()
+                # Step 4: Store
+                data.adjacency_0 = A_0
+
+                A_0_dense = A_0.to_dense().detach().cpu().numpy()
+                G = nx.from_numpy_array(A_0_dense)
+
+                # Save the graph figure
+                # import matplotlib.pyplot as plt
+                # plt.figure(figsize=(10, 10))
+                # nx.draw(G, with_labels=True, node_color='lightblue', edge_color='gray', node_size=500, font_size=10)
+                # plt.savefig("graph_visualization.png")
+                # plt.close()
+
+                # Find cycles using networkx (non-differentiable step)
+                cycles = nx.cycle_basis(G)
+                cycles = [cycle for cycle in cycles if len(cycle) >= 3]  # Remove small cycles
+
+                #print(cycles)
+                if len(cycles)> 0:
+                    polled_cycles, node_cell_matrix = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
+                    if node_cell_matrix._nnz() > 0:
+                        incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
                     else:
-                        edge_dict[edge].append(node)
+                        num_edges_fake = incidence_matrix_1.size(1)  # Number of edges
+                        dummy_indices = torch.empty((2, 0), dtype=torch.long, device=incidence_matrix_1.device)  # No non-zero entries
+                        dummy_values = torch.empty((0,), device=incidence_matrix_1.device)  # No values
+                        incidence_matrix_2 = torch.sparse_coo_tensor(
+                            dummy_indices,
+                            dummy_values,
+                            size=(num_edges_fake, 2),  # Two columns for two cells
+                            device=incidence_matrix_1.device
+                        ).coalesce()
+                else:
+                    num_edges_fake = incidence_matrix_1.size(1)  # Number of edges
+                    dummy_indices = torch.empty((2, 0), dtype=torch.long, device=incidence_matrix_1.device)  # No non-zero entries
+                    dummy_values = torch.empty((0,), device=incidence_matrix_1.device)  # No values
+                    incidence_matrix_2 = torch.sparse_coo_tensor(
+                        dummy_indices,
+                        dummy_values,
+                        size=(num_edges_fake, 2),  # Two columns for two cells
+                        device=incidence_matrix_1.device
+                    ).coalesce()
 
-                edges = [tuple(nodes) for nodes in edge_dict.values() if
-                         len(nodes) == 2]  # Ensure only valid edges are considered
 
-                G = nx.Graph()
-                G.add_edges_from(edges)
 
-                # print(f"Number of nodes: {G.number_of_nodes()}")
-                # print(f"Number of edges: {G.number_of_edges()}")
-                # print(f"Cycles: {nx.cycle_basis(G)}")
-
-                edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Indices of non-zero entries
-                rows, cols = edge_indices  # Rows are node indices, cols are edge indices
-
-                edge_to_nodes = {}
-                for edge_idx in cols.unique():
-                    nodes = rows[cols == edge_idx].tolist()
-                    if len(nodes) == 2:  # Only consider valid edges with exactly two endpoints
-                        edge_to_nodes[edge_idx.item()] = tuple(nodes)
-
-                edges_tensor = torch.tensor(list(edge_to_nodes.values()),
-                                            device=final_incidence.device)  # Shape: [num_edges, 2]
-
-                subgraphs = []
-                for node in range(num_nodes):
-                    neighbors = set(knn_indices[node].tolist())
-                    neighbors.add(node)
-                    neighbors_tensor = torch.tensor(list(neighbors), device=final_incidence.device)
-
-                    mask = (torch.isin(edges_tensor[:, 0], neighbors_tensor) &
-                            torch.isin(edges_tensor[:, 1], neighbors_tensor))
-                    subgraph_edges = edges_tensor[mask]  # Shape: [num_filtered_edges, 2]
-
-                    G = nx.Graph()
-                    G.add_edges_from(subgraph_edges.tolist())
-                    subgraphs.append(G)
-
-                print(f"Number of subgraphs: {len(subgraphs)}")
-                for i, G in enumerate(subgraphs):
-                    print(f"Subgraph {i}: {G.edges()}")  # Print edges of each subgraph
-                    print(f"Cycles in Subgraph {i}: {nx.cycle_basis(G)}")
-
-                subgraph_id = 1913
-                selected_graph = subgraphs[subgraph_id]
-                print(f"Subgraph {subgraph_id} edges: {selected_graph.edges()}")
-
-                print(nx.cycle_basis(selected_graph))
-
-                print(f"Number of nodes in Subgraph {subgraph_id}: {selected_graph.number_of_nodes()}")
-                print(f"Number of edges in Subgraph {subgraph_id}: {selected_graph.number_of_edges()}")
-                print(f"Cycles in Subgraph {subgraph_id}: {nx.cycle_basis(selected_graph)}")
-                # cell_cycle_lifting = CellCycleLifting(max_cell_length=6)  # Define max cell length as needed
-                # lifted_topology = cell_cycle_lifting.lift_topology(data_geometric)
-
-                # print("Lifted Topology: ", lifted_topology.keys())
-                # print("Lifted Topology incidence: ", lifted_topology["incidence_1"])
-                # print("Lifted Topology incidence: ", lifted_topology["incidence_2"])
-
-                # Step 7: Cycle Sampling for Cell Construction
-
-                # pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
-
-                # include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
-                # inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
-                # straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
-
-                # mask = torch.zeros((num_nodes, num_nodes),device=data.x.device)
-
-                # node_triangle_matrix= mask.scatter_(1, knn_indices, straight_through_samples.repeat(1,3))
-
-                # incidence_matrix_2= incidence_matrix_1.T @ node_triangle_matrix
                 # incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
+
+
 
                 data_for_lifting = {}
 
                 data_for_lifting = {
-                    "x_0": x.float(),  # Node features
+                    "x_0": embeddings,  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                     "incidence_2": incidence_matrix_2,  # edge_to-triangle
+                    "adjacency_1": A
                 }
 
                 lifted_data = self.projection_sum(data_for_lifting)
+                #print("Lifted data keys:", lifted_data.keys())
+                #print(lifted_data)
+                # for key, value in lifted_data.items():
+                #     print(f"Key: {key}, Shape: {value.shape if isinstance(value, torch.Tensor) else 'Not a Tensor'}")
+                # print("Data keys:", data.keys)
+                # print(data)
 
-                data.x_0 = x.float()
+                #data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
-                data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
+                lifted_data["adjacency_1"] = A
+                #print(lifted_data)
+                lifted_data["x_0"] = torch.div(lifted_data["x_0"], torch.max(self.k_v))
+                #print(lifted_data)
+                lifted_data_obj = Data(**lifted_data)
+                tnn_output = self.tnn(lifted_data_obj)
+                # print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
+                batch["incidence_1"]= incidence_matrix_1
 
-        
-        # print(data)
-        data = self.feature_encoder(data)
+                batch["incidence_2"]= incidence_matrix_2
+                out = self.readout(tnn_output, batch)
+                # print(out)
+                return out["logits"]
+
+
+        #print("data ": data)
+        #data = self.feature_encoder(data)
         # print("data after feature encoder", data)
         # print("shapes before tnn: ", data["x_0"].shape)
         tnn_output = self.tnn(data)
