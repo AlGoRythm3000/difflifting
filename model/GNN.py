@@ -121,5 +121,3 @@ class GPS(torch.nn.Module):
         for conv in self.convs:
             x = conv(x, edge_index, batch)
         return x
-
-
