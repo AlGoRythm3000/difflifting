@@ -197,7 +197,7 @@ def compute_node_cell_matrix(
 
     # 2. Mask of cycles to keep
     keep_mask = col_sums > 0  # [C] bool
-    if keep_mask.numel() == 0 or not keep_mask.any():  
+    if keep_mask.numel() == 0 or not keep_mask.any():
         # Check if keep_mask is empty
         # Handle the case where no cycles are kept
         empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
@@ -218,7 +218,7 @@ def compute_node_cell_matrix(
     filtered_indices = indices[:, mask_cycles]
     filtered_values  = values[mask_cycles]
 
-    kept_cycles = torch.nonzero(keep_mask, as_tuple=False).view(-1)  
+    kept_cycles = torch.nonzero(keep_mask, as_tuple=False).view(-1)
     # now kept_cycles is always 1‑D, even if it has 0 or 1 element
 
     if kept_cycles.numel() == 0:
@@ -278,7 +278,7 @@ class TNN_KNN_MLP_G(nn.Module):
             self.pool = global_mean_pool
             self.k = k
 
-            if tnn_type in ["UniGCNII", "AST", "HyperGAT", "UniGIN"]:
+            if tnn_type in ["UniGCNII", "UniGCN","AST", "HyperGAT", "UniGIN", "UniSAGE"]:
                 self.mlp = nn.Sequential(
                     nn.Linear(embedding_dim, 2 * hidden_dim),
                     nn.ReLU(),
@@ -287,7 +287,7 @@ class TNN_KNN_MLP_G(nn.Module):
                     nn.Dropout(0.5),
                     nn.Linear(hidden_dim, 1),
                 )
-            if tnn_type not in ["UniGCNII", "AST", "HyperGAT", "UniGIN"]:
+            if tnn_type not in ["UniGCNII", "UniGCN","AST", "HyperGAT", "UniGIN", "UniSAGE"]:
                 # self.mlp_cell = nn.Sequential(
                 #     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
                 #     nn.ReLU(),
@@ -330,7 +330,7 @@ class TNN_KNN_MLP_G(nn.Module):
             device=device
         )
 
-        
+
         if args.no_readout:
             self.readout = DirectReadout(**{
                 "readout_name": "DirectReadout",
@@ -420,8 +420,8 @@ class TNN_KNN_MLP_G(nn.Module):
 
             distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
-            if (self.tnn_type == "UniGCNII" or self.tnn_type == "AST" or
-                self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN"):
+            if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or
+                self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
                 aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)
@@ -489,28 +489,28 @@ class TNN_KNN_MLP_G(nn.Module):
                 first_neighbor = knn_indices[:, 0].unsqueeze(1)
                 knn_selected = torch.where(kv_mask, knn_indices, first_neighbor)
                 knn_indices = knn_selected
-                
-                
+
+
                 num_nodes, k_edges = knn_indices.shape
-                
+
                 node_indices = torch.arange(num_nodes, device=knn_indices.device)
-                
+
                 # Unsqueeze to make it a column vector of shape [num_nodes, 1]
                 node_indices = node_indices.unsqueeze(1)
-                
+
                 # Expand node_indices to repeat each node index for each candidate neighbor.
                 # After expansion, node_indices has shape [num_nodes, k_edges]
                 node_indices = node_indices.expand(num_nodes, k_edges)
-                
+
                 # Reshape both node_indices and knn_indices to a flat vector so that each element corresponds to an edge.
                 node_indices_flat = node_indices.reshape(-1)
                 knn_indices_flat = knn_indices.reshape(-1)
-                
+
                 # Stack the flattened node_indices and knn_indices to form an edge_index tensor.
                 # The resulting edge_index tensor will have shape [2, num_nodes * k_edges],
                 # where the first row is the source node and the second row is the target node.
                 edge_indices_knn = torch.stack([node_indices_flat, knn_indices_flat], dim=0)
-                
+
                 # print(edge_indices_knn)
 
                 source_embeddings = embeddings[edge_indices_knn[0]]  # Shape: [num_selected_edges, embedding_dim]
@@ -524,12 +524,12 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 # Apply sharpening to logits and compute probabilities
                 edge_probs = torch.softmax(edge_logits * sharpening_factor, dim=-1)[:, 1]  # Sharpened probability of class 1
-                
+
                 # Step 3: Apply straight-through estimator
                 edge_classes = (edge_probs > 0.5).float()  # Binary values (0 or 1) during forward pass
                 edge_classes = edge_classes + (edge_probs - edge_probs.detach())  # Preserve gradients
 
-                                
+
                                 # Step 4: Construct incidence matrix as a sparse tensor with gradients
                                 # Step 4: Construct incidence matrix as a sparse tensor with gradients
                 num_nodes           = embeddings.size(0)
@@ -571,7 +571,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # 4. Filter indices & values
                 filtered_indices = all_indices[:, mask_pairs]
                 filtered_values  = all_values[mask_pairs]
-                
+
                 edge_sampling = True
                 # 5. Remap old edge‑column IDs → new compact range [0..num_kept-1]
                 kept_cols = torch.nonzero(keep_mask, as_tuple=False).view(-1)               # always 1‑D
@@ -612,7 +612,7 @@ class TNN_KNN_MLP_G(nn.Module):
                     original_incidence[edge[0], idx] = 1
                     original_incidence[edge[1], idx] = 1
 
-                
+
                 original_incidence_sparse = original_incidence.to_sparse_coo()
                 if edge_sampling:
                     incidence_matrix_1 = torch.cat(
@@ -622,7 +622,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 else:
                     incidence_matrix_1 = original_incidence_sparse
                 incidence_matrix_1.requires_grad_(True)
-                
+
                 # # Step 1: compute edge-edge adjacency via shared face
                 # Step 1: Build adjacency matrix
                 A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
@@ -678,7 +678,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # Find cycles using networkx (non-differentiable step)
                 cycles = nx.cycle_basis(G)
                 cycles = [cycle for cycle in cycles if len(cycle) >= 3]  # Remove small cycles
-                
+
                 #print(cycles)
                 if len(cycles)> 0:
                     polled_cycles, node_cell_matrix = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
@@ -705,12 +705,12 @@ class TNN_KNN_MLP_G(nn.Module):
                         device=incidence_matrix_1.device
                     ).coalesce()
 
-                
-                
+
+
                 # incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
 
 
-                
+
                 data_for_lifting = {}
 
                 data_for_lifting = {
@@ -729,7 +729,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # print(data)
 
                 #data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
-                
+
                 lifted_data["adjacency_1"] = A
                 #print(lifted_data)
                 lifted_data["x_0"] = torch.div(lifted_data["x_0"], torch.max(self.k_v))
@@ -744,7 +744,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # print(out)
                 return out["logits"]
 
-        
+
         #print("data ": data)
         #data = self.feature_encoder(data)
         # print("data after feature encoder", data)

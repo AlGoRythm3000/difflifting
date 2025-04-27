@@ -51,12 +51,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="GIN", choices=["GIN", "GPS"])
-    parser.add_argument("--tnn", type=str, default="CWN", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "HyperGAT"])
+    parser.add_argument("--tnn", type=str, default="UniGCNII", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="MUTAG",
-        choices=["ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY","REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
+        default="Tolokers",
+        choices=["Cora", "Citeseer", "Pubmed",   #Classic Node classification datasets
+                 "Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers", #Heterophilous Graph dataset
+                 "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
+                 "REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
     parser.add_argument(
         "--lifting",
@@ -73,6 +76,9 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
+    )
+    parser.add_argument(
+        "--number_of_mask", type=int, default=1, help="if the dataset is heterophyllic you have to choose from 0 to 9"
     )
     parser.add_argument("--early_stop_patience", type=int, default=50)
     parser.add_argument("--lr_decay_patience", type=int, default=10)
