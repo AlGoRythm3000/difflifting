@@ -105,7 +105,9 @@ class AllCellFeatureEncoder(AbstractFeatureEncoder):
 
         for i in self.dimensions:
             if hasattr(data, f"x_{i}") and hasattr(self, f"encoder_{i}"):
-                batch = getattr(data, f"batch_{i}")
+                batch = None
+                if hasattr(data, f"batch_{i}"):
+                    batch = getattr(data, f"batch_{i}")
                 data[f"x_{i}"] = getattr(self, f"encoder_{i}")(
                     data[f"x_{i}"], batch
                 )
@@ -138,7 +140,7 @@ class BaseEncoder(torch.nn.Module):
     def __repr__(self):
         return f"{self.__class__.__name__}(in_channels={self.linear1.in_features}, out_channels={self.linear1.out_features})"
 
-    def forward(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, batch: torch.Tensor = None) -> torch.Tensor:
         r"""Forward pass of the encoder.
 
         It applies two linear layers with GraphNorm, Relu activation function, and dropout between the two layers.
@@ -156,7 +158,11 @@ class BaseEncoder(torch.nn.Module):
             Output tensor of shape [N, out_channels].
         """
         x = self.linear1(x)
-        x = self.BN(x, batch=batch) if batch.shape[0] > 0 else self.BN(x)
+        if batch is not None:
+            if (batch.shape[0] > 0):
+                x = self.BN(x, batch=batch)
+        else:
+          x = self.BN(x)
         x = self.dropout(self.relu(x))
         x = self.linear2(x)
         return x

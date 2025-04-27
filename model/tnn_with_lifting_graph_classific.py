@@ -6,6 +6,9 @@ from torch_geometric.nn import global_mean_pool
 from torch_geometric.utils import is_undirected
 from torch_geometric.utils import to_undirected
 
+import torch.nn.functional as F
+
+
 from layers.encoders.all_cell_features_encoders import AllCellFeatureEncoder
 from model.GNN import GIN, GPS
 # from layers.diff_lifting import DiffLifting
@@ -55,7 +58,7 @@ class AttentionLifting(nn.Module):
             [key.split("_")[1] for key in data if ("incidence" in key and "-" not in key)]
         )
 
-        self.k_v = torch.nn.Parameter(torch.tensor(2.0))  # Automatically requires_grad=True
+        self.k_v = data["k_v"]  # Automatically requires_grad=True
 
         for elem in keys:
             if f"x_{elem}" not in data:
@@ -76,10 +79,9 @@ class AttentionLifting(nn.Module):
                 lifted_features = []
                 for struct_idx, nodes in structures:
                     features = node_features[nodes]
-                    #print("k_v: ",self.k_v)
+
                     # Compute attention scores using the gradient-preserving k_v
                     scaling_factor = torch.sqrt(self.k_v)
-                    #print("Scaling factor: ", scaling_factor)
                     query = torch.matmul(features, self.W1.t())
                     key = torch.matmul(features, self.W2.t())
                     scores = torch.matmul(query, key.t()) / scaling_factor
@@ -91,7 +93,6 @@ class AttentionLifting(nn.Module):
 
                     # Apply order-invariant aggregation
                     structure_feature = self.phi(messages.mean(dim=0, keepdim=True))
-                    #print("structure feature", structure_feature)
                     lifted_features.append(structure_feature)
 
                 # Combine all lifted features
@@ -103,23 +104,23 @@ class AttentionLifting(nn.Module):
                         device=node_features.device
                     )
 
-        #print("data after lifting: ", data, "\n\n")
         return data
 
     def forward(self, data):
         """Apply the lifting to the input data."""
         data = self.lift_features(data)
+        data["x_1"]= data["incidence_1"].T @ data["x_0"]
         return data
 
 
 class TNN_KNN_MLP_G(nn.Module):
 
     def __init__(self, in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False, global_pool="sum",
-                 device="cpu", tnn_type="SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64):
+                 device="cpu", tnn_type="SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64, k_max=10):
         super(TNN_KNN_MLP_G, self).__init__()
         self.k = k
         self.k_min = 2
-        self.k_max = 10
+        self.k_max = k_max
 
         self.triangle_count = 0  # Add this to track triangles
         self.diff_lifting = diff_lifting
@@ -144,7 +145,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 nn.Dropout(0.5),
                 nn.Linear(hidden_dim, 1),
             )
-            if tnn_type not in ["UniGCNII", "AST"]:
+            if tnn_type not in ["UniGCNII", "UniGCN","AST", "HyperGAT", "UniGIN", "UniSAGE"]:
                 self.mlp_cell = nn.Sequential(
                     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
                     nn.ReLU(),
@@ -170,7 +171,7 @@ class TNN_KNN_MLP_G(nn.Module):
             self.triangle_count = 0
             self.projection_sum = ProjectionSum()
 
-            self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
+            #self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
 
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
@@ -179,6 +180,9 @@ class TNN_KNN_MLP_G(nn.Module):
             n_layers=num_layers_tnn,
             device=device
         )
+
+        #self.classifier = nn.Linear(hidden_dim, num_classes)
+
         if args.no_readout:
             self.readout = DirectReadout(**{
                 "readout_name": "DirectReadout",
@@ -228,16 +232,37 @@ class TNN_KNN_MLP_G(nn.Module):
         data = batch
         if self.diff_lifting:
             x, edge_index = data.x.float(), data.edge_index
+            #print("Initial data.x shape:", data.x.shape)  # Initial shape
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
+
+            #print("number of edges: ", edge_index_undirected.size(1))
             embeddings = self.gnn(data)
 
             # Keep gradient through mean operation
-            embedding_mean = embeddings.mean(dim=0, keepdim=True)
+            embedding_mean = embeddings
 
-            print("embeddings requires_grad:", embeddings.requires_grad)
+            #print("embeddings requires_grad:", embeddings.requires_grad)
 
             k_logits = self.k_mlp(embedding_mean)  # Shape: [1, k_max - k_min + 1]
-            k_logits_sum = k_logits.sum()
+
+
+            k_sample = F.gumbel_softmax(k_logits, tau=1.0, hard=True)
+
+            #print("k_sample:", k_sample)
+
+            k_range = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=k_logits.dtype)
+
+            #print("k_range:", k_range)
+
+
+            # Compute the differentiable integer sample as the dot product of the one-hot vector and the range tensor.
+            k_v = torch.sum(k_sample * k_range, dim=-1)  # Shape: [1]
+
+            #print("k_v:", k_v)
+            #print("k_v grad:", k_v.grad)
+
+            self.k_v = k_v
+
 
             mask_knn = torch.nn.functional.one_hot(data.batch_0, num_classes=vertex_slice.shape[0] - 1)
 
@@ -247,9 +272,14 @@ class TNN_KNN_MLP_G(nn.Module):
 
             distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
-            if self.tnn_type == "UniGCNII" or self.tnn_type == "AST":
-                knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
-
+            if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or
+                self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
+                knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
+                aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
+                kv_mask = aranged_indices < k_v.unsqueeze(1)
+                first_neighbor = knn_indices[:, 0].unsqueeze(1)
+                knn_selected = torch.where(kv_mask, knn_indices, first_neighbor)
+                knn_indices = knn_selected
                 pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
                 include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
@@ -268,70 +298,74 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 mask = torch.zeros((num_nodes, num_nodes), device=data.x.device)
 
-                node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, self.k))
+                node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, torch.max(self.k_v).long().item()))
 
                 # This is not used, but we keep it for future use
                 incidence_matrix_2 = incidence_matrix_1.T @ node_triangle_matrix
                 incidence_matrix_2 = torch.div(incidence_matrix_2, 2, rounding_mode='trunc')
                 # ---- # ----- # ----- #
 
-                data_for_lifting = {}
-
+                #print("incidence matrix before concatenation:", incidence_matrix_1.shape)
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
-                print(incidence_matrix_1.grad_fn)
-                data_for_lifting = {
-                    "x_0": x.float(),
-                    "incidence_1": incidence_matrix_1,
-                    "k_v": k_logits_sum  # Pass the continuous k value
-                }
 
-                data_for_lifting["x_0"].requires_grad_()
-
-                #print(data_for_lifting)
-
-                lifted_data = self.attention_lift(data_for_lifting)
-
-                #print(data_for_lifting)
-
+                #print("incidence matrix after concatenation:", incidence_matrix_1.shape)
+                #print(incidence_matrix_1.grad_fn)
+                
                 data.x_0 = x.float()
 
-                data.incidence_1 = data_for_lifting.get("incidence_1")
+                data.x_0 = torch.div(data.x_0, torch.max(self.k_v))
+
+                #print("data.x_0 after division:", data.x_0.shape)
+
+                data.incidence_1 = incidence_matrix_1
                 data.incidence_1 = torch.Tensor(data.incidence_1).to_sparse_coo()
+
+                
+
+                #print(data)
+                data = self.feature_encoder(data)
+                #print("data after feature encoder", data)
+                #print("shapes before tnn: ", data["x_0"].shape)
+                tnn_output = self.tnn(data)
+                #print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
+                out = self.readout(tnn_output, batch)
+                #print(out)
+                return out["logits"]    
 
             ## AMAURI E DIEGO, ESSE else é para o celular, olhar o de cima
             else:
                 knn_indices = torch.topk(-distances, self.k, dim=-1)[1]
 
-                print("knn_indices: ", knn_indices.shape, knn_indices)
+                # print("knn_indices: ", knn_indices.shape, knn_indices)
 
                 num_nodes, k = knn_indices.size()
                 embedding_dim = embeddings.size(1)
 
                 knn_embeddings = embeddings[knn_indices]  # Shape: [num_nodes, k, embedding_dim]
-                print("knn_embeddings: ", knn_embeddings.shape, knn_embeddings)
+                # print("knn_embeddings: ", knn_embeddings.shape, knn_embeddings)
                 central_embeddings = embeddings.unsqueeze(1).expand(-1, k, -1)  # Shape: [num_nodes, k, embedding_dim]
-                print("central_embeddings: ", central_embeddings.shape, central_embeddings)
+                # print("central_embeddings: ", central_embeddings.shape, central_embeddings)
                 edge_embeddings = torch.cat([central_embeddings, knn_embeddings],
                                             dim=-1)  # Shape: [num_nodes, k, 2 * embedding_dim]
-                print("edge_embeddings: ", edge_embeddings.shape, edge_embeddings)
+                # print("edge_embeddings: ", edge_embeddings.shape, edge_embeddings)
                 pooled_embeddings = edge_embeddings.mean(dim=2)  # Shape: [num_nodes, k, embedding_dim]
-                print("pooled_embeddings: ", pooled_embeddings.shape, pooled_embeddings)
+                # print("pooled_embeddings: ", pooled_embeddings.shape, pooled_embeddings)
                 include_probs = torch.sigmoid(self.mlp_cell(pooled_embeddings))  # Shape: [num_nodes, k]
-                print("include_probs: ", include_probs.shape, include_probs)
+                # print("include_probs: ", include_probs.shape, include_probs)
                 inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()  # Shape: [num_nodes, k]
-                print("inclusion_samples: ", inclusion_samples.shape, inclusion_samples)
+                # print("inclusion_samples: ", inclusion_samples.shape, inclusion_samples)
                 straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
-                print("straight_through_samples: ", straight_through_samples.shape, straight_through_samples)
+                # print("straight_through_samples: ", straight_through_samples.shape, straight_through_samples)
                 num_new_edges = num_nodes * k
                 new_sampled_incidence = torch.zeros((num_nodes, num_new_edges), device=embeddings.device)
-                print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
+                # print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
                 edge_indices = torch.arange(num_new_edges, device=embeddings.device).view(num_nodes,
                                                                                           k)  # Shape: [num_nodes, k]
-                print("edge_indices: ", edge_indices.shape, edge_indices)
-                print("edge_indices view", edge_indices.view(-1, 1).shape)
-                print("straight view", straight_through_samples.view(-1, 1).shape)
+                # print("edge_indices: ", edge_indices.shape, edge_indices)
+                # print("edge_indices view", edge_indices.view(-1, 1).shape)
+                # print("straight view", straight_through_samples.view(-1, 1).shape)
                 new_sampled_incidence.scatter_(1, edge_indices.view(-1, 1).T, straight_through_samples.view(-1, 1).T)
-                print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
+                # print("new_sampled_incidence: ", new_sampled_incidence.shape, new_sampled_incidence)
 
                 num_edges = edge_index_undirected.size(1)
 
@@ -344,17 +378,17 @@ class TNN_KNN_MLP_G(nn.Module):
                 final_incidence = torch.cat([original_incidence_1, new_sampled_incidence],
                                             dim=1)  # Shape: [num_nodes, num_original_edges + num_new_edges]
 
-                print("final_incidence: ", final_incidence.shape, final_incidence)
+                # print("final_incidence: ", final_incidence.shape, final_incidence)
 
                 # (Optionally) Clone final_incidence if needed for future gradient tracking
                 final_incidence_1 = final_incidence.clone()  # For potential future gradient use
-                print("Cloned final_incidence_1: ", final_incidence_1.shape, final_incidence_1)
+                # print("Cloned final_incidence_1: ", final_incidence_1.shape, final_incidence_1)
 
                 k = edge_indices.size(1)  # Should be 3
 
                 edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Returns indices of non-zero entries
                 rows, cols = edge_indices  # Rows are node indices, cols are edge indices
-                print("original edge_index undirected: ", edge_index_undirected.shape)
+                # print("original edge_index undirected: ", edge_index_undirected.shape)
                 # Create a dictionary to map each edge index to its corresponding pair of nodes
                 edge_dict = {}
                 for node, edge in zip(rows.tolist(), cols.tolist()):
@@ -369,9 +403,9 @@ class TNN_KNN_MLP_G(nn.Module):
                 G = nx.Graph()
                 G.add_edges_from(edges)
 
-                print(f"Number of nodes: {G.number_of_nodes()}")
-                print(f"Number of edges: {G.number_of_edges()}")
-                print(f"Cycles: {nx.cycle_basis(G)}")
+                # print(f"Number of nodes: {G.number_of_nodes()}")
+                # print(f"Number of edges: {G.number_of_edges()}")
+                # print(f"Cycles: {nx.cycle_basis(G)}")
 
                 edge_indices = torch.nonzero(final_incidence, as_tuple=True)  # Indices of non-zero entries
                 rows, cols = edge_indices  # Rows are node indices, cols are edge indices
@@ -449,19 +483,15 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
+        
+        # print(data)
         data = self.feature_encoder(data)
-        print("data after feature encoder: ", data, "\n\n")
-        data.get("incidence_1").requires_grad_()
-        data.get("x_0").requires_grad_()
-        print("data after feature encoder grad: ", data, "\n\n")
-        print("x.requires_grad:", data.x.requires_grad)
-        print("x_0.requires_grad:", data.x_0.requires_grad)
-        print("incidence_1.requires_grad:", data.incidence_1.requires_grad)
-
+        # print("data after feature encoder", data)
+        # print("shapes before tnn: ", data["x_0"].shape)
         tnn_output = self.tnn(data)
-        print(tnn_output)
+        # print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
         out = self.readout(tnn_output, batch)
-        print("logits:", out["logits"].requires_grad)
+        # print(out)
         return out["logits"]
 
 

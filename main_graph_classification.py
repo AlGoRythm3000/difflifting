@@ -79,6 +79,8 @@ if __name__ == '__main__':
         evaluator = Evaluator(args.dataset)
 
 
+    
+    k_vs = []  # list to track chosen k_v for each epoch
 
     for epoch in range(1, args.max_epochs):
         train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
@@ -100,6 +102,10 @@ if __name__ == '__main__':
 
         train_losses.append(train_loss)  # train losses
 
+        # if hasattr(model, 'k_v'):
+        #     k_vs.append(torch.mean(model.k_v))
+        # else:
+        #     k_vs.append(None)
         print(
             f"{epoch:3d}: Train Loss: {train_loss:.3f},"
             f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
@@ -124,14 +130,16 @@ if __name__ == '__main__':
         "test_losses": tensor(test_losses),
         "val_accuracies": tensor(val_accuracies),
         "val_losses": tensor(val_losses),
+          
         "params": {
             "gnn": args.gnn,
             "num_layers_gnn": args.num_layers_gnn,
             "gnn_embedding_dim": args.gnn_embedding_dim,
+            "k_max": args.k_max,
         },
     }
     if not os.path.exists(args.logdir):
         os.makedirs(args.logdir)
     torch.save(
-        results, f"{args.logdir}/{args.dataset}_{args.lifting}_{args.gnn}_{args.tnn}_{args.seed}.results"
+        results, f"{args.logdir}/{args.dataset}_{args.lifting}_{args.gnn}_{args.tnn}_{args.seed}_k_adaptative.results"
     )
