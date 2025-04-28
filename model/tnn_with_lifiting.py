@@ -264,8 +264,8 @@ class TNN_KNN_MLP_N(nn.Module):
         self.tnn_type = tnn_type
         self.num_classes = num_classes
 
-        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels], out_channels=hidden_dim,
-                                                     proj_dropout=0.5)
+        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels,in_channels,in_channels], out_channels=hidden_dim,
+                                                    proj_dropout=0.5)
         if diff_lifting:
 
             if args.gnn == "GIN":
@@ -324,15 +324,18 @@ class TNN_KNN_MLP_N(nn.Module):
 
             # self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
 
+        hidden_dim = embedding_dim if diff_lifting else hidden_dim
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
-            in_channels=embedding_dim,
+            in_channels=hidden_dim,
             hidden_channels=hidden_dim,
-            in_channels_1=embedding_dim,
-            in_channels_2=embedding_dim,
+            in_channels_1=hidden_dim,
+            in_channels_2=hidden_dim,
             n_layers=num_layers_tnn,
             device=device
         )
+
+
 
         # self.classifier = nn.Linear(hidden_dim, num_classes)
 
@@ -716,7 +719,8 @@ class TNN_KNN_MLP_N(nn.Module):
                     "x_0": embeddings,  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                     "incidence_2": incidence_matrix_2,  # edge_to-triangle
-                    "adjacency_1": A
+                    "adjacency_1": A,
+                    "adjacency_0": A_0
                 }
 
                 lifted_data = self.projection_sum(data_for_lifting)
