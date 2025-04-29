@@ -249,7 +249,7 @@ def compute_node_cell_matrix(
     ).coalesce()
 
     return pooled, node_cell_pruned
-
+HYPERGRAPH_MODULES = ["UniGCNII", "UniGCN", "AST", "HyperGAT", "UniGIN", "UniSAGE"]
 class TNN_KNN_MLP_N(nn.Module):
 
     def __init__(self, in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False, global_pool="sum",
@@ -282,7 +282,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 nn.Dropout(0.5),
                 nn.Linear(hidden_dim, 1),
             )
-            if tnn_type in ["UniGCNII", "UniGCN", "AST", "HyperGAT", "UniGIN", "UniSAGE"]:
+            if tnn_type in HYPERGRAPH_MODULES:
                 self.mlp = nn.Sequential(
                     nn.Linear(embedding_dim, 2 * hidden_dim),
                     nn.ReLU(),
@@ -291,7 +291,7 @@ class TNN_KNN_MLP_N(nn.Module):
                     nn.Dropout(0.5),
                     nn.Linear(hidden_dim, 1),
                 )
-            if tnn_type not in ["UniGCNII", "UniGCN", "AST", "HyperGAT", "UniGIN", "UniSAGE"]:
+            if tnn_type not in HYPERGRAPH_MODULES:
                 # self.mlp_cell = nn.Sequential(
                 #     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
                 #     nn.ReLU(),
@@ -323,8 +323,12 @@ class TNN_KNN_MLP_N(nn.Module):
             self.projection_sum = ProjectionSum()
 
             # self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
-
-        hidden_dim = embedding_dim if diff_lifting else hidden_dim
+        if tnn_type in HYPERGRAPH_MODULES:
+             hidden_dim = hidden_dim
+        else:
+            if diff_lifting:
+                hidden_dim = embedding_dim
+        # hidden_dim = embedding_dim if diff_lifting else hidden_dim
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
             in_channels=hidden_dim,
@@ -748,7 +752,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 return out["logits"]
 
             # print("data ": data)
-            # data = self.feature_encoder(data)
+        data = self.feature_encoder(data)
             # print("data after feature encoder", data)
             # print("shapes before tnn: ", data["x_0"].shape)
         tnn_output = self.tnn(data)
