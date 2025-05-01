@@ -324,7 +324,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
         
     elif dataset=="Cora":
-        dataset = Planetoid(root='data', name='cora')
+        dataset = Planetoid(root='data', name='cora', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
         if args.lifting == "diffLifting":
@@ -334,7 +334,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
         
     elif dataset=="Citeseer":
-        dataset = Planetoid(root='data', name='CiteSeer')
+        dataset = Planetoid(root='data', name='CiteSeer', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
         if args.lifting == "diffLifting":
@@ -344,7 +344,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
 
     elif dataset=="Pubmed":
-        dataset = Planetoid(root='data', name='pubmed')
+        dataset = Planetoid(root='data', name='pubmed', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
         if args.lifting == "diffLifting":

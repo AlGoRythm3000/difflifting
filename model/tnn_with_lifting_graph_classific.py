@@ -21,7 +21,7 @@ from model.tnn_with_lifiting import ProjectionSum
 from preprocessing.preprocessing import remove_duplicate_edges
 from tools.redout import DirectReadout
 from tools.redout import PropagateSignalDown
-
+HYPERGRAPH_MODULES = ["UniGCNII", "UniGCN", "AST", "HyperGAT", "UniGIN", "UniSAGE"]
 
 class AttentionLifting(nn.Module):
     """Lift node features to hyperedge features using attention mechanism."""
@@ -319,7 +319,11 @@ class TNN_KNN_MLP_G(nn.Module):
             self.projection_sum = ProjectionSum()
 
             #self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
-        hidden_dim = embedding_dim if diff_lifting else hidden_dim
+        if tnn_type in HYPERGRAPH_MODULES:
+             hidden_dim = hidden_dim
+        else:
+            if diff_lifting:
+                hidden_dim = embedding_dim
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
             in_channels=hidden_dim,
