@@ -455,16 +455,81 @@ class TNN_KNN_MLP_N(nn.Module):
                 node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, torch.max(
                     self.k_v).long().item()))
 
-                # This is not used, but we keep it for future use
-                incidence_matrix_2 = incidence_matrix_1.T @ node_triangle_matrix
-                incidence_matrix_2 = torch.div(incidence_matrix_2, 2, rounding_mode='trunc')
-                # ---- # ----- # ----- #
+                # Build the full sampled incidence matrix (sparse COO)
+                incidence_matrix_sampled = torch.sparse_coo_tensor(
+                    indices=knn_indices.T,
+                    values=straight_through_samples.flatten(),
+                    size=(num_nodes, knn_indices.size(1)),
+                    device=data.x.device
+                ).coalesce()
 
-                # print("incidence matrix before concatenation:", incidence_matrix_1.shape)
-                incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
+                ### >>>> REMOVE ZERO‐ONLY COLUMNS (keep gradient) <<<< ###
 
-                # print("incidence matrix after concatenation:", incidence_matrix_1.shape)
-                # print(incidence_matrix_1.grad_fn)
+                # 1. Sum per column to detect non‑zero columns
+                col_sums = torch.sparse.sum(incidence_matrix_sampled, dim=0).to_dense()  # [num_edges_sampled]
+
+                # 2. Boolean mask of columns to keep
+                keep_mask = col_sums > 0  # [num_edges_sampled]
+
+                # 3. Duplicate mask so it matches the doubled‑up indices
+                mask_pairs = torch.cat([keep_mask, keep_mask], dim=0)  # [2 * num_edges_sampled]
+
+                # 4. Filter indices & values
+                filtered_indices = knn_indices[:, keep_mask]
+                filtered_values = straight_through_samples[keep_mask]
+
+                edge_sampling = True
+                # 5. Remap old edge‑column IDs → new compact range [0..num_kept-1]
+                kept_cols = torch.nonzero(keep_mask, as_tuple=False).view(-1)  # always 1‑D
+                if kept_cols.numel() == 0:
+                    # nothing kept → empty [num_nodes, 0]
+                    empty_idx = torch.empty((2, 0), dtype=torch.long, device=data.x.device)
+                    empty_val = torch.empty((0,), device=data.x.device)
+                    incidence_matrix_sampled = torch.sparse_coo_tensor(
+                        empty_idx, empty_val,
+                        size=(num_nodes, 0),
+                        device=data.x.device,
+                        requires_grad=True
+                    ).coalesce()
+
+                    edge_sampling = False
+                else:
+                    new_col_range = torch.arange(kept_cols.size(0), device=data.x.device)
+                    old2new = torch.full((knn_indices.size(1),), -1, dtype=torch.long,
+                                         device=data.x.device)
+                    old2new[kept_cols] = new_col_range
+
+                    # apply the remapping
+                    filtered_indices[1] = old2new[filtered_indices[1]]
+
+                    # 6. Rebuild the filtered sparse incidence matrix
+                    incidence_matrix_sampled = torch.sparse_coo_tensor(
+                        indices=filtered_indices,
+                        values=filtered_values,
+                        size=(num_nodes, kept_cols.size(0)),
+                        device=data.x.device,
+                        requires_grad=True
+                    ).coalesce()
+
+                # Combine with original edges
+                original_incidence = torch.zeros((num_nodes, num_edges),
+                                                 device=embeddings.device)
+                for idx, edge in enumerate(edge_index_undirected.T):
+                    original_incidence[edge[0], idx] = 1
+                    original_incidence[edge[1], idx] = 1
+
+                original_incidence_sparse = original_incidence.to_sparse_coo()
+                if edge_sampling:
+                    incidence_matrix_1 = torch.cat(
+                        [original_incidence_sparse, incidence_matrix_sampled],
+                        dim=1
+                    ).coalesce()
+                else:
+                    incidence_matrix_1 = original_incidence_sparse
+                incidence_matrix_1.requires_grad_(True)
+
+                # Store the final incidence matrix
+                data.incidence_1 = incidence_matrix_1
 
                 data.x_0 = x.float()
 
@@ -584,71 +649,6 @@ class TNN_KNN_MLP_N(nn.Module):
                     # nothing kept → empty [num_nodes, 0]
                     empty_idx = torch.empty((2, 0), dtype=torch.long, device=edge_classes.device)
                     empty_val = torch.empty((0,), device=edge_classes.device)
-                    incidence_matrix_sampled = torch.sparse_coo_tensor(
-                        empty_idx, empty_val,
-                        size=(num_nodes, 0),
-                        device=edge_classes.device,
-                        requires_grad=True
-                    ).coalesce()
-
-                    edge_sampling = False
-                else:
-                    new_col_range = torch.arange(kept_cols.size(0), device=edge_classes.device)
-                    old2new = torch.full((num_edges_sampled,), -1, dtype=torch.long,
-                                         device=edge_classes.device)
-                    old2new[kept_cols] = new_col_range
-
-                    # apply the remapping
-                    filtered_indices[1] = old2new[filtered_indices[1]]
-
-                    # 6. Rebuild the filtered sparse incidence matrix
-                    incidence_matrix_sampled = torch.sparse_coo_tensor(
-                        indices=filtered_indices,
-                        values=filtered_values,
-                        size=(num_nodes, kept_cols.size(0)),
-                        device=edge_classes.device,
-                        requires_grad=True
-                    ).coalesce()
-
-                # Now combine with original edges
-                original_incidence = torch.zeros((num_nodes, num_edges),
-                                                 device=embeddings.device)
-                for idx, edge in enumerate(edge_index_undirected.T):
-                    original_incidence[edge[0], idx] = 1
-                    original_incidence[edge[1], idx] = 1
-
-                original_incidence_sparse = original_incidence.to_sparse_coo()
-                if edge_sampling:
-                    incidence_matrix_1 = torch.cat(
-                        [original_incidence_sparse, incidence_matrix_sampled],
-                        dim=1
-                    ).coalesce()
-                else:
-                    incidence_matrix_1 = original_incidence_sparse
-                incidence_matrix_1.requires_grad_(True)
-
-                # # Step 1: compute edge-edge adjacency via shared face
-                # Step 1: Build adjacency matrix
-                A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
-
-                # Step 2: Remove diagonal (self-loops) using element-wise multiplication
-                num_tot_edges = A.size(0)
-                identity_indices = torch.arange(num_tot_edges, device=A.device).repeat(2, 1)
-                identity_values = torch.ones(num_tot_edges, device=A.device)
-                identity_mask = torch.sparse_coo_tensor(identity_indices, identity_values, size=A.size()).coalesce()
-
-                # Perform element-wise multiplication to remove diagonal entries
-                A = A * (1 - identity_mask.to_dense())
-
-                # Step 3: Replace all 2s with 1, keeping 0s and 1s untouched (differentiably!)
-                A = torch.sparse_coo_tensor(
-                    A.indices(),
-                    torch.clamp(A.values(), max=1),
-                    A.size(),
-                    device=A.device
-                ).coalesce()
-                # Step 4: Store
-                data.adjacency_1 = A
 
                 A_0 = incidence_matrix_1 @ incidence_matrix_1.T
 
