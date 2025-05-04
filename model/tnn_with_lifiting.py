@@ -459,81 +459,16 @@ class TNN_KNN_MLP_N(nn.Module):
                 node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, torch.max(
                     self.k_v).long().item()))
 
-                # Build the full sampled incidence matrix (sparse COO)
-                incidence_matrix_sampled = torch.sparse_coo_tensor(
-                    indices=knn_indices.T,
-                    values=straight_through_samples.flatten(),
-                    size=(num_nodes, knn_indices.size(1)),
-                    device=data.x.device
-                ).coalesce()
+                # This is not used, but we keep it for future use
+                # incidence_matrix_2 = incidence_matrix_1.T @ node_triangle_matrix
+                # incidence_matrix_2 = torch.div(incidence_matrix_2, 2, rounding_mode='trunc')
+                # ---- # ----- # ----- #
 
-                ### >>>> REMOVE ZERO‐ONLY COLUMNS (keep gradient) <<<< ###
-
-                # 1. Sum per column to detect non‑zero columns
-                col_sums = torch.sparse.sum(incidence_matrix_sampled, dim=0).to_dense()  # [num_edges_sampled]
-
-                # 2. Boolean mask of columns to keep
-                keep_mask = col_sums > 0  # [num_edges_sampled]
-
-                # 3. Duplicate mask so it matches the doubled‑up indices
-                mask_pairs = torch.cat([keep_mask, keep_mask], dim=0)  # [2 * num_edges_sampled]
-
-                # 4. Filter indices & values
-                filtered_indices = knn_indices[:, keep_mask]
-                filtered_values = straight_through_samples[keep_mask]
-
-                edge_sampling = True
-                # 5. Remap old edge‑column IDs → new compact range [0..num_kept-1]
-                kept_cols = torch.nonzero(keep_mask, as_tuple=False).view(-1)  # always 1‑D
-                if kept_cols.numel() == 0:
-                    # nothing kept → empty [num_nodes, 0]
-                    empty_idx = torch.empty((2, 0), dtype=torch.long, device=data.x.device)
-                    empty_val = torch.empty((0,), device=data.x.device)
-                    incidence_matrix_sampled = torch.sparse_coo_tensor(
-                        empty_idx, empty_val,
-                        size=(num_nodes, 0),
-                        device=data.x.device,
-                        requires_grad=True
-                    ).coalesce()
-
-                    edge_sampling = False
-                else:
-                    new_col_range = torch.arange(kept_cols.size(0), device=data.x.device)
-                    old2new = torch.full((knn_indices.size(1),), -1, dtype=torch.long,
-                                         device=data.x.device)
-                    old2new[kept_cols] = new_col_range
-
-                    # apply the remapping
-                    filtered_indices[1] = old2new[filtered_indices[1]]
-
-                    # 6. Rebuild the filtered sparse incidence matrix
-                    incidence_matrix_sampled = torch.sparse_coo_tensor(
-                        indices=filtered_indices,
-                        values=filtered_values,
-                        size=(num_nodes, kept_cols.size(0)),
-                        device=data.x.device,
-                        requires_grad=True
-                    ).coalesce()
-
-                # Combine with original edges
-                original_incidence = torch.zeros((num_nodes, num_edges),
-                                                 device=embeddings.device)
-                for idx, edge in enumerate(edge_index_undirected.T):
-                    original_incidence[edge[0], idx] = 1
-                    original_incidence[edge[1], idx] = 1
-
-                original_incidence_sparse = original_incidence.to_sparse_coo()
-                if edge_sampling:
-                    incidence_matrix_1 = torch.cat(
-                        [original_incidence_sparse, incidence_matrix_sampled],
-                        dim=1
-                    ).coalesce()
-                else:
-                    incidence_matrix_1 = original_incidence_sparse
-                incidence_matrix_1.requires_grad_(True)
-
-                # Store the final incidence matrix
-                data.incidence_1 = incidence_matrix_1
+                # print("incidence matrix before concatenation:", incidence_matrix_1.shape)
+                incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
+                # print(incidence_matrix_1.shape)
+                # print("incidence matrix after concatenation:", incidence_matrix_1.shape)
+                # print(incidence_matrix_1.grad_fn)
 
                 data.x_0 = x.float()
 
@@ -541,8 +476,20 @@ class TNN_KNN_MLP_N(nn.Module):
 
                 # print("data.x_0 after division:", data.x_0.shape)
 
-                data.incidence_1 = incidence_matrix_1
-                data.incidence_1 = torch.Tensor(data.incidence_1).to_sparse_coo()
+                col_sums = incidence_matrix_1.sum(dim=0)  # [total_cols]
+
+                # 2) Build keep‐mask
+                keep = col_sums > 0  # [total_cols], bool
+
+                # Print the number of columns before and after pruning
+                # print(f"Number of columns before pruning: {incidence_matrix_1.size(1)}")
+                # print(f"Number of columns after pruning: {keep.sum().item()}")
+
+                # 3) Index out zero columns (gather on dim=1 preserves grads)
+                incidence_pruned = incidence_matrix_1[:, keep]  # [num_nodes, num_kept]
+
+                # 4) Convert to sparse‐COO if that’s what your pipeline expects
+                data.incidence_1 = incidence_pruned.to_sparse_coo()
 
                 # print(data)
                 data = self.feature_encoder(data)
@@ -558,12 +505,12 @@ class TNN_KNN_MLP_N(nn.Module):
             else:
 
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
-                aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(
-                    self.k_v.shape[0], -1)
+                aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)
                 first_neighbor = knn_indices[:, 0].unsqueeze(1)
                 knn_selected = torch.where(kv_mask, knn_indices, first_neighbor)
                 knn_indices = knn_selected
+
 
                 num_nodes, k_edges = knn_indices.shape
 
@@ -589,7 +536,7 @@ class TNN_KNN_MLP_N(nn.Module):
 
                 source_embeddings = embeddings[edge_indices_knn[0]]  # Shape: [num_selected_edges, embedding_dim]
                 target_embeddings = embeddings[edge_indices_knn[1]]  # Shape: [num_selected_edges, embedding_dim]
-                edge_embeddings = (source_embeddings + target_embeddings) / 2
+                edge_embeddings = (source_embeddings + target_embeddings) /2
                 # Step 2: Compute logits and sharpen probabilities
                 edge_logits = self.edge_mlp(edge_embeddings)  # Shape: [num_edges, 2]
 
@@ -597,27 +544,27 @@ class TNN_KNN_MLP_N(nn.Module):
                 sharpening_factor = 10.0  # Example value for sharpening
 
                 # Apply sharpening to logits and compute probabilities
-                edge_probs = torch.softmax(edge_logits * sharpening_factor, dim=-1)[:,
-                             1]  # Sharpened probability of class 1
+                edge_probs = torch.softmax(edge_logits * sharpening_factor, dim=-1)[:, 1]  # Sharpened probability of class 1
 
                 # Step 3: Apply straight-through estimator
                 edge_classes = (edge_probs > 0.5).float()  # Binary values (0 or 1) during forward pass
                 edge_classes = edge_classes + (edge_probs - edge_probs.detach())  # Preserve gradients
 
-                # Step 4: Construct incidence matrix as a sparse tensor with gradients
-                # Step 4: Construct incidence matrix as a sparse tensor with gradients
-                num_nodes = embeddings.size(0)
-                num_edges_sampled = edge_indices_knn.size(1)
-                num_edges = edge_index_undirected.size(1)
+
+                                # Step 4: Construct incidence matrix as a sparse tensor with gradients
+                                # Step 4: Construct incidence matrix as a sparse tensor with gradients
+                num_nodes           = embeddings.size(0)
+                num_edges_sampled   = edge_indices_knn.size(1)
+                num_edges           = edge_index_undirected.size(1)
 
                 # Prepare indices for sparse incidence matrix
-                rows_u = edge_indices_knn[0]  # [num_edges_sampled]
-                rows_v = edge_indices_knn[1]  # [num_edges_sampled]
-                cols = torch.arange(num_edges_sampled, device=edge_classes.device)
+                rows_u = edge_indices_knn[0]                         # [num_edges_sampled]
+                rows_v = edge_indices_knn[1]                         # [num_edges_sampled]
+                cols   = torch.arange(num_edges_sampled, device=edge_classes.device)
 
                 # Stack (node, edge) pairs twice: source and target
-                indices_u = torch.stack([rows_u, cols], dim=0)  # [2, num_edges_sampled]
-                indices_v = torch.stack([rows_v, cols], dim=0)
+                indices_u   = torch.stack([rows_u, cols], dim=0)     # [2, num_edges_sampled]
+                indices_v   = torch.stack([rows_v, cols], dim=0)
                 all_indices = torch.cat([indices_u, indices_v], dim=1)  # [2, 2*num_edges_sampled]
 
                 # Duplicate values for both ends of each edge
@@ -634,27 +581,117 @@ class TNN_KNN_MLP_N(nn.Module):
                 ### >>>> REMOVE ZERO‐ONLY COLUMNS (keep gradient) <<<< ###
 
                 # 1. Sum per column to detect non‑zero columns
-                col_sums = torch.sparse.sum(incidence_matrix_sampled, dim=0).to_dense()  # [num_edges_sampled]
+                col_sums   = torch.sparse.sum(incidence_matrix_sampled, dim=0).to_dense()  # [num_edges_sampled]
 
                 # 2. Boolean mask of columns to keep
-                keep_mask = col_sums > 0  # [num_edges_sampled]
+                keep_mask  = col_sums > 0                                                  # [num_edges_sampled]
 
                 # 3. Duplicate mask so it matches the doubled‑up indices
-                mask_pairs = torch.cat([keep_mask, keep_mask], dim=0)  # [2 * num_edges_sampled]
+                mask_pairs = torch.cat([keep_mask, keep_mask], dim=0)                      # [2 * num_edges_sampled]
 
                 # 4. Filter indices & values
                 filtered_indices = all_indices[:, mask_pairs]
-                filtered_values = all_values[mask_pairs]
+                filtered_values  = all_values[mask_pairs]
 
                 edge_sampling = True
                 # 5. Remap old edge‑column IDs → new compact range [0..num_kept-1]
-                kept_cols = torch.nonzero(keep_mask, as_tuple=False).view(-1)  # always 1‑D
+                kept_cols = torch.nonzero(keep_mask, as_tuple=False).view(-1)               # always 1‑D
                 if kept_cols.numel() == 0:
                     # nothing kept → empty [num_nodes, 0]
                     empty_idx = torch.empty((2, 0), dtype=torch.long, device=edge_classes.device)
-                    empty_val = torch.empty((0,), device=edge_classes.device)
+                    empty_val = torch.empty((0,),     device=edge_classes.device)
+                    incidence_matrix_sampled = torch.sparse_coo_tensor(
+                        empty_idx, empty_val,
+                        size=(num_nodes, 0),
+                        device=edge_classes.device,
+                        requires_grad=True
+                    ).coalesce()
 
-                A_0 = incidence_matrix_1 @ incidence_matrix_1.T
+                    edge_sampling= False
+                else:
+                    new_col_range = torch.arange(kept_cols.size(0), device=edge_classes.device)
+                    old2new       = torch.full((num_edges_sampled,), -1, dtype=torch.long,
+                                            device=edge_classes.device)
+                    old2new[kept_cols] = new_col_range
+
+                    # apply the remapping
+                    filtered_indices[1] = old2new[filtered_indices[1]]
+
+                    # 6. Rebuild the filtered sparse incidence matrix
+                    incidence_matrix_sampled = torch.sparse_coo_tensor(
+                        indices=filtered_indices,
+                        values=filtered_values,
+                        size=(num_nodes, kept_cols.size(0)),
+                        device=edge_classes.device,
+                        requires_grad=True
+                    ).coalesce()
+
+                # Now combine with original edges
+                original_incidence = torch.zeros((num_nodes, num_edges),
+                                                device=embeddings.device)
+                for idx, edge in enumerate(edge_index_undirected.T):
+                    original_incidence[edge[0], idx] = 1
+                    original_incidence[edge[1], idx] = 1
+
+
+                original_incidence_sparse = original_incidence.to_sparse_coo()
+                if edge_sampling:
+                    incidence_matrix_1 = torch.cat(
+                        [original_incidence_sparse, incidence_matrix_sampled],
+                        dim=1
+                    ).coalesce()
+                else:
+                    incidence_matrix_1 = original_incidence_sparse
+                incidence_matrix_1.requires_grad_(True)
+
+                # # Step 1: compute edge-edge adjacency via shared face
+                # Step 1: Build adjacency matrix
+                A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
+
+                # # Step 2: Remove diagonal (self-loops) using element-wise multiplication
+                # num_tot_edges = A.size(0)
+                # identity_indices = torch.arange(num_tot_edges, device=A.device).repeat(2, 1)
+                # identity_values = torch.ones(num_tot_edges, device=A.device)
+                # identity_mask = torch.sparse_coo_tensor(identity_indices, identity_values, size=A.size()).coalesce()
+                #
+                # # Perform element-wise multiplication to remove diagonal entries
+                # A = A * (1 - identity_mask.to_dense())
+                #
+                # # Step 3: Replace all 2s with 1, keeping 0s and 1s untouched (differentiably!)
+                # A = torch.sparse_coo_tensor(
+                #     A.indices(),
+                #     torch.clamp(A.values(), max=1),
+                #     A.size(),
+                #     device=A.device
+                # ).coalesce()
+                # Step 2: Remove diagonal (self-loops) using sparse operations
+                # Criando uma máscara esparsa com 1s na diagonal (auto-loops)
+                num_nodes = A.size(0)
+                diag_indices = torch.arange(num_nodes, device=A.device).unsqueeze(0).repeat(2, 1)
+                diag_values = torch.ones(num_nodes, device=A.device)
+                diag_mask = torch.sparse_coo_tensor(diag_indices, diag_values, size=A.size()).coalesce()
+
+                # Subtrair a máscara da matriz original para remover auto-loops
+                # Usando fórmula: A = A - A ⊙ diag_mask (⊙ = produto elemento a elemento)
+                # Aqui usamos o fato de que onde há auto-loop, A e diag_mask terão o mesmo índice
+                A_indices = A.indices()
+                A_values = A.values()
+
+                # Encontrar os índices que NÃO estão na diagonal
+                is_not_diag = A_indices[0] != A_indices[1]
+                new_indices = A_indices[:, is_not_diag]
+                new_values = A_values[is_not_diag]
+
+                # Construir matriz esparsa sem auto-loops
+                A = torch.sparse_coo_tensor(new_indices, new_values, A.size(), device=A.device).coalesce()
+
+                # Step 3: Replace all values >1 by 1 (diferenciável)
+                clamped_values = torch.clamp(A.values(), max=1)
+                A = torch.sparse_coo_tensor(A.indices(), clamped_values, A.size(), device=A.device).coalesce()
+                # Step 4: Store
+                data.adjacency_1 = A
+
+                A_0=  incidence_matrix_1 @ incidence_matrix_1.T
 
                 num_tot_edges = A_0.size(0)
                 identity_indices = torch.arange(num_nodes, device=A_0.device).repeat(2, 1)
@@ -687,15 +724,14 @@ class TNN_KNN_MLP_N(nn.Module):
                 cycles = nx.cycle_basis(G)
                 cycles = [cycle for cycle in cycles if len(cycle) >= 3]  # Remove small cycles
 
-                # print(cycles)
-                if len(cycles) > 0:
+                #print(cycles)
+                if len(cycles)> 0:
                     polled_cycles, node_cell_matrix = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
                     if node_cell_matrix._nnz() > 0:
-                        incidence_matrix_2 = incidence_matrix_1.T @ node_cell_matrix
+                        incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
                     else:
                         num_edges_fake = incidence_matrix_1.size(1)  # Number of edges
-                        dummy_indices = torch.empty((2, 0), dtype=torch.long,
-                                                    device=incidence_matrix_1.device)  # No non-zero entries
+                        dummy_indices = torch.empty((2, 0), dtype=torch.long, device=incidence_matrix_1.device)  # No non-zero entries
                         dummy_values = torch.empty((0,), device=incidence_matrix_1.device)  # No values
                         incidence_matrix_2 = torch.sparse_coo_tensor(
                             dummy_indices,
@@ -705,8 +741,7 @@ class TNN_KNN_MLP_N(nn.Module):
                         ).coalesce()
                 else:
                     num_edges_fake = incidence_matrix_1.size(1)  # Number of edges
-                    dummy_indices = torch.empty((2, 0), dtype=torch.long,
-                                                device=incidence_matrix_1.device)  # No non-zero entries
+                    dummy_indices = torch.empty((2, 0), dtype=torch.long, device=incidence_matrix_1.device)  # No non-zero entries
                     dummy_values = torch.empty((0,), device=incidence_matrix_1.device)  # No values
                     incidence_matrix_2 = torch.sparse_coo_tensor(
                         dummy_indices,
@@ -715,7 +750,11 @@ class TNN_KNN_MLP_N(nn.Module):
                         device=incidence_matrix_1.device
                     ).coalesce()
 
+
+
                 # incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
+
+
 
                 data_for_lifting = {}
 
@@ -728,25 +767,25 @@ class TNN_KNN_MLP_N(nn.Module):
                 }
 
                 lifted_data = self.projection_sum(data_for_lifting)
-                # print("Lifted data keys:", lifted_data.keys())
-                # print(lifted_data)
+                #print("Lifted data keys:", lifted_data.keys())
+                #print(lifted_data)
                 # for key, value in lifted_data.items():
                 #     print(f"Key: {key}, Shape: {value.shape if isinstance(value, torch.Tensor) else 'Not a Tensor'}")
                 # print("Data keys:", data.keys)
                 # print(data)
 
-                # data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
+                #data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
                 lifted_data["adjacency_1"] = A
-                # print(lifted_data)
+                #print(lifted_data)
                 lifted_data["x_0"] = torch.div(lifted_data["x_0"], torch.max(self.k_v))
-                # print(lifted_data)
+                #print(lifted_data)
                 lifted_data_obj = Data(**lifted_data)
                 tnn_output = self.tnn(lifted_data_obj)
                 # print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
-                batch["incidence_1"] = incidence_matrix_1
+                batch["incidence_1"]= incidence_matrix_1
 
-                batch["incidence_2"] = incidence_matrix_2
+                batch["incidence_2"]= incidence_matrix_2
                 out = self.readout(tnn_output, batch)
                 # print(out)
                 return out["logits"]
