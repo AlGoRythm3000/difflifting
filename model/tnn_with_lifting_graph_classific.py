@@ -446,6 +446,7 @@ class TNN_KNN_MLP_G(nn.Module):
                     incidence_matrix_1[edge[0], idx] = 1
                     incidence_matrix_1[edge[1], idx] = 1
 
+        
                 num_nodes = data.x.size(0)
 
                 mask = torch.zeros((num_nodes, num_nodes), device=data.x.device)
@@ -469,8 +470,21 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 #print("data.x_0 after division:", data.x_0.shape)
 
-                data.incidence_1 = incidence_matrix_1
-                data.incidence_1 = torch.Tensor(data.incidence_1).to_sparse_coo()
+                col_sums = incidence_matrix_1.sum(dim=0)              # [total_cols]
+
+                # 2) Build keep‐mask
+                keep = col_sums > 0                                   # [total_cols], bool
+
+                # Print the number of columns before and after pruning
+                print(f"Number of columns before pruning: {incidence_matrix_1.size(1)}")
+                print(f"Number of columns after pruning: {keep.sum().item()}")
+
+                # 3) Index out zero columns (gather on dim=1 preserves grads)
+                incidence_pruned = incidence_matrix_1[:, keep]        # [num_nodes, num_kept]
+
+                # 4) Convert to sparse‐COO if that’s what your pipeline expects
+                data.incidence_1 = incidence_pruned.to_sparse_coo()
+            
 
                 
 
@@ -810,3 +824,6 @@ def generate_graph_from_data(
     graph.add_nodes_from(nodes)
     graph.add_edges_from(edges)
     return graph
+
+
+

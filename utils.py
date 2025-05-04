@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="Cora",
+        default="MUTAG",
         choices=["Cora", "Citeseer", "Pubmed",   #Classic Node classification datasets
                  "Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers", #Heterophilous Graph dataset
                  "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--number_of_mask", type=int, default=1, help="if the dataset is heterophyllic you have to choose from 0 to 9"
     )
-    parser.add_argument("--early_stop_patience", type=int, default=50)
+    parser.add_argument("--early_stop_patience", type=int, default=100)
     parser.add_argument("--lr_decay_patience", type=int, default=10)
     parser.add_argument("--logdir", type=str, default="results/", help="Log directory")
     parser.add_argument("--hidden_dim", type=int, default=64)
@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positional_encoder_dim", type=int, default=4)
     parser.add_argument("--positional_walking_len", type=int, default=20)
     parser.add_argument("--depth", type=int, default=2)
-    parser.add_argument("--no_readout", action='store_true')
+    parser.add_argument("--no_readout", action='store_false')
     parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
