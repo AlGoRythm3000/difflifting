@@ -21,6 +21,7 @@ from tools.lifting.khop import SimplicialKHopLifting
 from tools.lifting.hypergraph import HypergraphKHopLifting
 from tools.lifting.neighboorhood_complex import NeighborhoodComplexLifting
 from tools.lifting.cycle_lifting import CellCycleLifting
+from tools.lifting.discrete_lifting import DiscreteConfigurationComplexLifting
 from tools.normalize import normalize_matrix
 
 NODES_PREDICTION_DATASET = ["Cora", "Citeseer", "Pubmed", "karate",]
@@ -35,7 +36,9 @@ LIFTINGS = {
     "NeighborhoodComplexLifting": NeighborhoodComplexLifting,
     "SimplicialKHopLifting":SimplicialKHopLifting,
     "CellCycleLifting": CellCycleLifting,
+    "DiscreteConfigurationComplexLifting": DiscreteConfigurationComplexLifting,
     "HypergraphKHopLifting": HypergraphKHopLifting
+    
 }
 PATH = "../DATA/DATASETS"
 
