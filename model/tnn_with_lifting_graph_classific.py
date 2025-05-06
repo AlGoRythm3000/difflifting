@@ -475,9 +475,9 @@ class TNN_KNN_MLP_G(nn.Module):
                 # 2) Build keep‐mask
                 keep = col_sums > 0                                   # [total_cols], bool
 
-                # Print the number of columns before and after pruning
-                print(f"Number of columns before pruning: {incidence_matrix_1.size(1)}")
-                print(f"Number of columns after pruning: {keep.sum().item()}")
+                # # Print the number of columns before and after pruning
+                # print(f"Number of columns before pruning: {incidence_matrix_1.size(1)}")
+                # print(f"Number of columns after pruning: {keep.sum().item()}")
 
                 # 3) Index out zero columns (gather on dim=1 preserves grads)
                 incidence_pruned = incidence_matrix_1[:, keep]        # [num_nodes, num_kept]

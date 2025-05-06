@@ -19,9 +19,11 @@ from tools.collate import collate_fn
 from tools.lifting.clique_lifting import SimplicialCliqueLifting
 from tools.lifting.khop import SimplicialKHopLifting
 from tools.lifting.hypergraph import HypergraphKHopLifting
+from tools.lifting.hypergraph import HypergraphKNNLifting
 from tools.lifting.neighboorhood_complex import NeighborhoodComplexLifting
 from tools.lifting.cycle_lifting import CellCycleLifting
 from tools.lifting.discrete_lifting import DiscreteConfigurationComplexLifting
+from tools.lifting.kernel import HypergraphKernelLifting
 from tools.normalize import normalize_matrix
 
 NODES_PREDICTION_DATASET = ["Cora", "Citeseer", "Pubmed", "karate", "Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers"]
@@ -32,7 +34,10 @@ LIFTINGS = {
     "SimplicialKHopLifting":SimplicialKHopLifting,
     "CellCycleLifting": CellCycleLifting,
     "DiscreteConfigurationComplexLifting": DiscreteConfigurationComplexLifting,
-    "HypergraphKHopLifting": HypergraphKHopLifting
+    "HypergraphKHopLifting": HypergraphKHopLifting,
+    "HypergraphKNNLifting": HypergraphKNNLifting,
+    "HypergraphKernelLifting": lambda **kwargs: HypergraphKernelLifting(**kwargs),
+    
     
 }
 PATH = "../DATA/DATASETS"
@@ -257,7 +262,7 @@ def lift_topology(dataset, args):
         data_list = []
         max_dim = 0
         for i, d in enumerate(dataset):
-            lift_fn = LIFTINGS[args.lifting](signed=args.signed)
+            lift_fn = LIFTINGS[args.lifting](signed=args.signed, t=args.t)
             new_data = lift_fn(d)
             for key, value in new_data.items():
                 if key.startswith("hodge_laplacian_"):
