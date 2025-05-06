@@ -378,16 +378,25 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
     elif dataset in HETEROPHILIC_DATASETS:
         if dataset in WEBKBDatasets:
             dataset = WebKB(root='data', name=dataset, transform=T.NormalizeFeatures())
-            data = dataset[0]
+            if args.lifting == "diffLifting":
+                data = dataset[0]
+            else:
+                data = lift_topology(dataset, args)[0]
             data.train_mask = data.train_mask[:, args.number_of_mask]
             data.val_mask = data.val_mask[:, args.number_of_mask]
             data.test_mask = data.test_mask[:, args.number_of_mask]
+
+
         elif dataset in WIKIPEDIADatasets:
             dataset = WikipediaNetwork(root='data', name=dataset, transform=T.NormalizeFeatures())
-            data = dataset[0]
+            if args.lifting == "diffLifting":
+                data = dataset[0]
+            else:
+                data = lift_topology(dataset, args)[0]
             data.train_mask = data.train_mask[:, args.number_of_mask]
             data.val_mask = data.val_mask[:, args.number_of_mask]
             data.test_mask = data.test_mask[:, args.number_of_mask]
+
     dataloaders = get_data_loaders([data], [data], [data])
     return dataloaders, dataset.num_features, dataset.num_classes
 
