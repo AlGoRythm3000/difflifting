@@ -86,6 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hidden_dim", type=int, default=64)
     parser.add_argument("--gnn_embedding_dim", type=int, default=32)
     parser.add_argument("--k_max", type=int, default=10)
+    parser.add_argument("--k", type=int, default=3)
     parser.add_argument("--graph_transformer_n_heads", type=int, default=4)
     parser.add_argument("--positional_encoder_dim", type=int, default=4)
     parser.add_argument("--positional_walking_len", type=int, default=20)
@@ -101,5 +102,5 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument("--t", type=float, default=1.0, help="Temperature parameter for the heat kernel.")
-    
+
     return parser.parse_args()
