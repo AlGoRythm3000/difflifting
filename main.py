@@ -38,11 +38,12 @@ if __name__ == '__main__':
     test_loader = data[2]
 
     diff_lifting = True if args.lifting == "diffLifting" else False
-    model = TNN_KNN_MLP_N(num_features, args, hidden_dim=64, num_classes=num_classes,
+    model = TNN_KNN_MLP_N(num_features, args, hidden_dim=args.hidden_dim, num_classes=num_classes,
                           k=6, diff_lifting=diff_lifting, global_pool=args.global_pooling, device=device,
                           tnn_type=args.tnn,
                           num_layers_tnn=args.num_layers, num_layers_gnn=args.num_layers_gnn,
-                          embedding_dim=args.gnn_embedding_dim)
+                          embedding_dim=args.gnn_embedding_dim,
+                          k_max=args.k_max)
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
