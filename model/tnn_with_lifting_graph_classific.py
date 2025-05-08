@@ -274,7 +274,11 @@ class TNN_KNN_MLP_G(nn.Module):
             if args.gnn == "GIN":
                 self.gnn = GIN(in_channels, embedding_dim, embedding_dim, num_layers_gnn).to(device)
             elif args.gnn == "GPS":
-                self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn).to(device)
+                if args.dataset == "ZINC":
+                    self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn, is_zinc=True).to(device)
+                else:
+                    self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn).to(device)
+
             self.pool = global_mean_pool
             self.k = k
 
@@ -426,6 +430,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
             if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or
                 self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
+
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
                 aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)
