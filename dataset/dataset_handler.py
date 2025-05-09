@@ -9,7 +9,7 @@ from torch_geometric.utils import degree
 from torch_geometric.datasets import ZINC, TUDataset
 import torch_geometric.transforms as T
 from torch_geometric.datasets import KarateClub
-from torch_geometric.datasets import Planetoid
+from torch_geometric.datasets import Planetoid, Coauthor, WikipediaNetwork, WebKB
 from torch_geometric.datasets import HeterophilousGraphDataset
 from torch_geometric.loader import DataLoader
 
@@ -26,8 +26,13 @@ from tools.lifting.discrete_lifting import DiscreteConfigurationComplexLifting
 from tools.lifting.kernel import HypergraphKernelLifting
 from tools.normalize import normalize_matrix
 
-NODES_PREDICTION_DATASET = ["Cora", "Citeseer", "Pubmed", "karate", "Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers"]
-HETEROPHILIC_DATASETS = ["Roman-empire", "Amazon-ratings", "Minesweeper", "Tolokers"]
+NODES_PREDICTION_DATASET = ["Cora", "Citeseer", "Pubmed", "karate",]
+COAUTHOR_DATASETS = ["CS", "Physics"]
+WEBKBDatasets = ["Cornell", "Texas", "Wisconsin"]
+WIKIPEDIADatasets= ["chameleon", "crocodile", "squirrel"]
+HETEROPHILIC_DATASETS = WEBKBDatasets + WIKIPEDIADatasets
+NODES_PREDICTION_DATASET = NODES_PREDICTION_DATASET + COAUTHOR_DATASETS + WEBKBDatasets + WIKIPEDIADatasets
+
 LIFTINGS = {
     "SimplicialCliqueLifting":SimplicialCliqueLifting,
     "NeighborhoodComplexLifting": NeighborhoodComplexLifting,
@@ -360,17 +365,39 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         else:
             data = lift_topology(dataset, args)[0]
         # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
-    elif dataset in HETEROPHILIC_DATASETS:
-        dataset = HeterophilousGraphDataset(root='data', name=dataset)
+    elif dataset in COAUTHOR_DATASETS:
+        dataset = Coauthor(root='data', name=dataset, transform=T.NormalizeFeatures())
+
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
         if args.lifting == "diffLifting":
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
-        data.train_mask = data.train_mask[:, args.number_of_mask]
-        data.val_mask = data.val_mask[:, args.number_of_mask]
-        data.test_mask = data.test_mask[:, args.number_of_mask]
+        data = random_coauthor_amazon_splits(data, dataset.num_classes, None)
+
+    elif dataset in HETEROPHILIC_DATASETS:
+        if dataset in WEBKBDatasets:
+            dataset = WebKB(root='data', name=dataset, transform=T.NormalizeFeatures())
+            if args.lifting == "diffLifting":
+                data = dataset[0]
+            else:
+                data = lift_topology(dataset, args)[0]
+            data.train_mask = data.train_mask[:, args.number_of_mask]
+            data.val_mask = data.val_mask[:, args.number_of_mask]
+            data.test_mask = data.test_mask[:, args.number_of_mask]
+
+
+        elif dataset in WIKIPEDIADatasets:
+            dataset = WikipediaNetwork(root='data', name=dataset, transform=T.NormalizeFeatures())
+            if args.lifting == "diffLifting":
+                data = dataset[0]
+            else:
+                data = lift_topology(dataset, args)[0]
+            data.train_mask = data.train_mask[:, args.number_of_mask]
+            data.val_mask = data.val_mask[:, args.number_of_mask]
+            data.test_mask = data.test_mask[:, args.number_of_mask]
+
     dataloaders = get_data_loaders([data], [data], [data])
     return dataloaders, dataset.num_features, dataset.num_classes
 
@@ -398,8 +425,42 @@ def add_positional_encoding(args, dataset):
     return dataset
 
 
-
 import torch_geometric
+
+def index_to_mask(index, size):
+    mask = torch.zeros(size, dtype=torch.bool, device=index.device)
+    mask[index] = 1
+    return mask
+
+def random_coauthor_amazon_splits(data, num_classes, lcc_mask):
+    # Set random coauthor/co-purchase splits:
+    # * 20 * num_classes labels for training
+    # * 30 * num_classes labels for validation
+    # rest labels for testing
+
+    indices = []
+    if lcc_mask is not None:
+        for i in range(num_classes):
+            index = (data.y[lcc_mask] == i).nonzero().view(-1)
+            index = index[torch.randperm(index.size(0))]
+            indices.append(index)
+    else:
+        for i in range(num_classes):
+            index = (data.y == i).nonzero().view(-1)
+            index = index[torch.randperm(index.size(0))]
+            indices.append(index)
+
+    train_index = torch.cat([i[:20] for i in indices], dim=0)
+    val_index = torch.cat([i[20:50] for i in indices], dim=0)
+
+    rest_index = torch.cat([i[50:] for i in indices], dim=0)
+    rest_index = rest_index[torch.randperm(rest_index.size(0))]
+
+    data.train_mask = index_to_mask(train_index, size=data.num_nodes)
+    data.val_mask = index_to_mask(val_index, size=data.num_nodes)
+    data.test_mask = index_to_mask(rest_index, size=data.num_nodes)
+
+    return data
 
 
 class DataloadDataset(torch_geometric.data.Dataset):

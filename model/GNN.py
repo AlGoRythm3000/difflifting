@@ -88,14 +88,14 @@ class RedrawProjection:
 
 class GPS(torch.nn.Module):
     def __init__(self,node_embedding_dim, hidden_channels: int,  pe_channels,edge_embedding_dim=4,  pe_dim: int=8, num_layers: int=5,
-                 attn_type: str="multihead"):
+                 is_zinc=False,attn_type: str="multihead"):
         super().__init__()
 
         self.node_emb = Linear(node_embedding_dim, hidden_channels - pe_dim)
         self.pe_lin = Linear(pe_channels, pe_dim)
         self.pe_norm = BatchNorm1d(pe_channels)
         self.edge_emb = Linear(edge_embedding_dim, hidden_channels)
-
+        self.is_zinc = is_zinc
         self.convs = ModuleList()
         for _ in range(num_layers):
             nn = torch.nn.Sequential(
@@ -112,10 +112,12 @@ class GPS(torch.nn.Module):
             redraw_interval=1000 if attn_type == 'performer' else None)
 
     def forward(self, data):
-        x, pe, edge_index, edge_attr, batch = data.x , data.pe, data.edge_index, data.edge_attr, data.batch
+        x, pe, edge_index, edge_attr, batch = data.x.float() , data.pe, data.edge_index, data.edge_attr, data.batch
         x_pe = self.pe_norm(pe)
-        x = torch.cat((self.node_emb(x.squeeze(-1)), self.pe_lin(x_pe)), 1)
-
+        if self.is_zinc:
+            x = torch.cat((self.node_emb(x), self.pe_lin(x_pe)), 1)
+        else:
+            x = torch.cat((self.node_emb(x).squeeze(-1), self.pe_lin(x_pe)), 1)
         # edge_attr = self.edge_emb(edge_attr)
 
         for conv in self.convs:

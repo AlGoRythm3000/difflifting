@@ -274,7 +274,11 @@ class TNN_KNN_MLP_G(nn.Module):
             if args.gnn == "GIN":
                 self.gnn = GIN(in_channels, embedding_dim, embedding_dim, num_layers_gnn).to(device)
             elif args.gnn == "GPS":
-                self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn).to(device)
+                if args.dataset == "ZINC":
+                    self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn, is_zinc=True).to(device)
+                else:
+                    self.gnn = GPS(in_channels, embedding_dim, args.positional_walking_len, num_layers_gnn).to(device)
+
             self.pool = global_mean_pool
             self.k = k
 
@@ -426,6 +430,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
             if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or
                 self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
+
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
                 aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)
@@ -631,12 +636,22 @@ class TNN_KNN_MLP_G(nn.Module):
                     original_incidence[edge[1], idx] = 1
 
 
-                original_incidence_sparse = original_incidence.to_sparse_coo()
+                if self.tnn_type == "CXN":
+                    original_incidence_sparse = original_incidence
+                else:
+                    original_incidence_sparse = original_incidence.to_sparse_coo()
                 if edge_sampling:
-                    incidence_matrix_1 = torch.cat(
-                        [original_incidence_sparse, incidence_matrix_sampled],
-                        dim=1
-                    ).coalesce()
+                    if self.tnn_type == "CXN":
+                        incidence_matrix_sampled = incidence_matrix_sampled.to_dense()
+                        incidence_matrix_1 = torch.cat(
+                            [original_incidence_sparse, incidence_matrix_sampled],
+                            dim=1
+                        )
+                    else:
+                        incidence_matrix_1 = torch.cat(
+                            [original_incidence_sparse, incidence_matrix_sampled],
+                            dim=1
+                        ).to_sparse_coo()
                 else:
                     incidence_matrix_1 = original_incidence_sparse
                 incidence_matrix_1.requires_grad_(True)
@@ -644,6 +659,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # # Step 1: compute edge-edge adjacency via shared face
                 # Step 1: Build adjacency matrix
                 A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
+                A = A.to_sparse() if self.tnn_type == "CXN" else A
 
                 # Step 2: Remove diagonal (self-loops) using element-wise multiplication
                 num_tot_edges = A.size(0)
@@ -665,6 +681,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 data.adjacency_1 = A
 
                 A_0=  incidence_matrix_1 @ incidence_matrix_1.T
+                A_0 = A_0.to_sparse() if self.tnn_type == "CXN" else A_0
 
                 num_tot_edges = A_0.size(0)
                 identity_indices = torch.arange(num_nodes, device=A_0.device).repeat(2, 1)
