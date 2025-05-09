@@ -759,7 +759,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 return out["logits"]
 
         # print("data ": data)
-        # data = self.feature_encoder(data)
+        data = self.feature_encoder(data)
         # print("data after feature encoder", data)
         # print("shapes before tnn: ", data["x_0"].shape)
         tnn_output = self.tnn(data)
