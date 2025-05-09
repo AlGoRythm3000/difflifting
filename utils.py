@@ -57,7 +57,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="MUTAG",
         choices=["Cora", "Citeseer", "Pubmed",   #Classic Node classification datasets
-             "CS", "Physics","Cornell", "Texas", "Wisconsin","chameleon", "crocodile", "squirrel" #Heterophilous Graph dataset
+             "CS", "Physics","Cornell", "Texas", "Wisconsin","chameleon", "crocodile", "squirrel", #Heterophilous Graph dataset
                  "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
                  "REDDIT-BINARY", "ENZYMES", "PROTEINS", "DD", "MUTAG", "ZINC"],
     )
