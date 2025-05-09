@@ -636,12 +636,22 @@ class TNN_KNN_MLP_G(nn.Module):
                     original_incidence[edge[1], idx] = 1
 
 
-                original_incidence_sparse = original_incidence.to_sparse_coo()
+                if self.tnn_type == "CXN":
+                    original_incidence_sparse = original_incidence
+                else:
+                    original_incidence_sparse = original_incidence.to_sparse_coo()
                 if edge_sampling:
-                    incidence_matrix_1 = torch.cat(
-                        [original_incidence_sparse, incidence_matrix_sampled],
-                        dim=1
-                    ).coalesce()
+                    if self.tnn_type == "CXN":
+                        incidence_matrix_sampled = incidence_matrix_sampled.to_dense()
+                        incidence_matrix_1 = torch.cat(
+                            [original_incidence_sparse, incidence_matrix_sampled],
+                            dim=1
+                        )
+                    else:
+                        incidence_matrix_1 = torch.cat(
+                            [original_incidence_sparse, incidence_matrix_sampled],
+                            dim=1
+                        ).to_sparse_coo()
                 else:
                     incidence_matrix_1 = original_incidence_sparse
                 incidence_matrix_1.requires_grad_(True)
@@ -649,6 +659,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 # # Step 1: compute edge-edge adjacency via shared face
                 # Step 1: Build adjacency matrix
                 A = incidence_matrix_1.T @ incidence_matrix_1  # [num_edges, num_edges]
+                A = A.to_sparse() if self.tnn_type == "CXN" else A
 
                 # Step 2: Remove diagonal (self-loops) using element-wise multiplication
                 num_tot_edges = A.size(0)
@@ -670,6 +681,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 data.adjacency_1 = A
 
                 A_0=  incidence_matrix_1 @ incidence_matrix_1.T
+                A_0 = A_0.to_sparse() if self.tnn_type == "CXN" else A_0
 
                 num_tot_edges = A_0.size(0)
                 identity_indices = torch.arange(num_nodes, device=A_0.device).repeat(2, 1)
