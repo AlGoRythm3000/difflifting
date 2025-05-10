@@ -42,8 +42,8 @@ LIFTINGS = {
     "HypergraphKHopLifting": HypergraphKHopLifting,
     "HypergraphKNNLifting": lambda **kwargs: HypergraphKNNLifting(k_value=kwargs.get("k", 1), **kwargs),
     "HypergraphKernelLifting": lambda **kwargs: HypergraphKernelLifting(**kwargs),
-    
-    
+
+
 }
 PATH = "../DATA/DATASETS"
 
@@ -326,7 +326,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
     """
     if dataset == "karate":
         dataset = KarateClub()
-        if args.lifting == "diffLifting":
+        if args.lifting in DIFFERENTIABLE_LIFTINGS:
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
@@ -340,7 +340,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         dataset = Planetoid(root='data', name='cora', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
-        if args.lifting == "diffLifting":
+        if args.lifting in DIFFERENTIABLE_LIFTINGS:
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
@@ -350,7 +350,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         dataset = Planetoid(root='data', name='CiteSeer', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
-        if args.lifting == "diffLifting":
+        if args.lifting in DIFFERENTIABLE_LIFTINGS:
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
@@ -360,7 +360,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         dataset = Planetoid(root='data', name='pubmed', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
-        if args.lifting == "diffLifting":
+        if args.lifting in DIFFERENTIABLE_LIFTINGS:
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
@@ -385,10 +385,11 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
                 data = dataset[0]
             else:
                 data = lift_topology(dataset, args)[0]
+            mask_nr = torch.randint(0, 10, (1,)).item()
+            data.train_mask = data.train_mask[:, mask_nr]
+            data.val_mask = data.val_mask[:, mask_nr]
+            data.test_mask = data.test_mask[:, mask_nr]
 
-            data.train_mask = data.train_mask[:, args.number_of_mask]
-            data.val_mask = data.val_mask[:, args.number_of_mask]
-            data.test_mask = data.test_mask[:, args.number_of_mask]
 
 
         elif dataset in WIKIPEDIADatasets:
@@ -399,10 +400,11 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
                 data = dataset[0]
             else:
                 data = lift_topology(dataset, args)[0]
-            data.train_mask = data.train_mask[:, args.number_of_mask]
-            data.val_mask = data.val_mask[:, args.number_of_mask]
-            data.test_mask = data.test_mask[:, args.number_of_mask]
 
+            mask_nr = torch.randint(0, 10, (1,)).item()
+            data.train_mask = data.train_mask[:, mask_nr]
+            data.val_mask = data.val_mask[:, mask_nr]
+            data.test_mask = data.test_mask[:, mask_nr]
     dataloaders = get_data_loaders([data], [data], [data])
     return dataloaders, dataset.num_features, dataset.num_classes
 
@@ -428,6 +430,7 @@ def add_positional_encoding(args, dataset):
         graph_with_positional_encoder.append(positional_encoder(graph))
     dataset.data, dataset.slices = dataset.collate(graph_with_positional_encoder)
     return dataset
+
 
 
 import torch_geometric
