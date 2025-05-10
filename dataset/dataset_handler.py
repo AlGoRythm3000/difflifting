@@ -40,7 +40,7 @@ LIFTINGS = {
     "CellCycleLifting": CellCycleLifting,
     "DiscreteConfigurationComplexLifting": DiscreteConfigurationComplexLifting,
     "HypergraphKHopLifting": HypergraphKHopLifting,
-    "HypergraphKNNLifting": HypergraphKNNLifting,
+    "HypergraphKNNLifting": lambda **kwargs: HypergraphKNNLifting(k_value=kwargs.get("k", 1), **kwargs),
     "HypergraphKernelLifting": lambda **kwargs: HypergraphKernelLifting(**kwargs),
     
     
@@ -267,7 +267,7 @@ def lift_topology(dataset, args):
         data_list = []
         max_dim = 0
         for i, d in enumerate(dataset):
-            lift_fn = LIFTINGS[args.lifting](signed=args.signed, t=args.t)
+            lift_fn = LIFTINGS[args.lifting](signed=args.signed, t=args.t, k=args.k)
             new_data = lift_fn(d)
             for key, value in new_data.items():
                 if key.startswith("hodge_laplacian_"):
