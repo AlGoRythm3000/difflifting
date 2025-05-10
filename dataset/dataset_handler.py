@@ -393,6 +393,8 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
 
         elif dataset in WIKIPEDIADatasets:
             dataset = WikipediaNetwork(root='data', name=dataset, transform=T.NormalizeFeatures())
+            if args.gnn == "GPS":
+                dataset = add_positional_encoding(args, dataset)
             if args.lifting == "diffLifting":
                 data = dataset[0]
             else:
