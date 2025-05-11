@@ -264,7 +264,7 @@ class TNN_KNN_MLP_N(nn.Module):
         self.tnn_type = tnn_type
         self.num_classes = num_classes
         self.dropout = nn.Dropout(0.5)
-        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels], out_channels=hidden_dim,
+        self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim,
                                                     proj_dropout=0.5)
         if diff_lifting:
 
