@@ -326,7 +326,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
     """
     if dataset == "karate":
         dataset = KarateClub()
-        if args.lifting in DIFFERENTIABLE_LIFTINGS:
+        if args.lifting == "diffLifting":
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
@@ -340,7 +340,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         dataset = Planetoid(root='data', name='cora', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
-        if args.lifting in DIFFERENTIABLE_LIFTINGS:
+        if args.lifting == "diffLifting":
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
@@ -350,7 +350,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         dataset = Planetoid(root='data', name='CiteSeer', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
-        if args.lifting in DIFFERENTIABLE_LIFTINGS:
+        if args.lifting == "diffLifting":
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
@@ -360,7 +360,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         dataset = Planetoid(root='data', name='pubmed', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
             dataset = add_positional_encoding(args, dataset)
-        if args.lifting in DIFFERENTIABLE_LIFTINGS:
+        if args.lifting == "diffLifting":
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
