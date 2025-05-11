@@ -264,6 +264,11 @@ class TNN_KNN_MLP_N(nn.Module):
         self.tnn_type = tnn_type
         self.num_classes = num_classes
         self.dropout = nn.Dropout(0.5)
+        if tnn_type in HYPERGRAPH_MODULES:
+            hidden_dim = hidden_dim
+        else:
+            if diff_lifting:
+                hidden_dim = embedding_dim
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels, in_channels, in_channels], out_channels=hidden_dim,
                                                     proj_dropout=0.5)
         if diff_lifting:
@@ -316,11 +321,7 @@ class TNN_KNN_MLP_N(nn.Module):
             self.projection_sum = ProjectionSum()
 
             # self.attention_lift = AttentionLifting(feature_dim=in_channels, device=device)
-        if tnn_type in HYPERGRAPH_MODULES:
-            hidden_dim = hidden_dim
-        else:
-            if diff_lifting:
-                hidden_dim = embedding_dim
+
         self.tnn = TNN(
             model_type=tnn_type,  # choose TNN model
             in_channels=hidden_dim,
@@ -734,9 +735,9 @@ class TNN_KNN_MLP_N(nn.Module):
                 # incidence_matrix_2= torch.div(incidence_matrix_2,2,rounding_mode='trunc')
 
                 data_for_lifting = {}
-                # x_featured = self.feature_encoder(data)
+                x_featured = self.feature_encoder(data)
                 data_for_lifting = {
-                    "x_0": embeddings,  # Node features
+                    "x_0": x_featured.x_0,  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                     "incidence_2": incidence_matrix_2,  # edge_to-triangle
                     "adjacency_1": A,
