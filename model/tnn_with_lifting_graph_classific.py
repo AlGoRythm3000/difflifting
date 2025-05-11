@@ -2,6 +2,7 @@ import networkx as nx
 import torch
 import torch.nn as nn
 import torch_geometric
+from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 from torch_geometric.nn import global_mean_pool
 from torch_geometric.utils import is_undirected
 from torch_geometric.utils import to_undirected
@@ -266,9 +267,12 @@ class TNN_KNN_MLP_G(nn.Module):
         self.diff_lifting = diff_lifting
         self.tnn_type = tnn_type
         self.num_classes = num_classes
-
+        self.dataset = args.dataset
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels,in_channels,in_channels], out_channels=hidden_dim,
                                                     proj_dropout=0.5)
+        if args.dataset == "ogbg-molhiv":
+            self.atom_encoder = AtomEncoder(emb_dim=in_channels)
+
         if diff_lifting:
 
             if args.gnn == "GIN":
@@ -387,7 +391,9 @@ class TNN_KNN_MLP_G(nn.Module):
     def forward(self, batch):
         data = batch
         if self.diff_lifting:
-            x, edge_index = data.x.float(), data.edge_index
+            x, edge_index = data.x, data.edge_index
+            x = self.atom_encoder(x).float()  # x is input atom feature
+
             #print("Initial data.x shape:", data.x.shape)  # Initial shape
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
 
@@ -712,8 +718,12 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 # Find cycles using networkx (non-differentiable step)
                 cycles = nx.cycle_basis(G)
-                cycles = [cycle for cycle in cycles if len(cycle) >= 3]  # Remove small cycles
-
+                if self.dataset != "ogbg-molhiv":
+                    cycles = [cycle for cycle in cycles if len(cycle) >= 3]  # Remove small cycles
+                else:
+                    cycles = [
+                        cycle for cycle in cycles if len(cycle) <= 6
+                    ]
                 #print(cycles)
                 if len(cycles)> 0:
                     polled_cycles, node_cell_matrix = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
