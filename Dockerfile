@@ -1,44 +1,55 @@
-# Base image with CUDA Toolkit 12.1 and Ubuntu 20.04
-FROM nvidia/cuda:12.1.0-base-ubuntu20.04
+# use base image of Ubuntu 20.04
+FROM ubuntu:20.04
 
-# Set the working directory
-WORKDIR /app
+# Define workdir
+WORKDIR /workdir
 
-# Install necessary dependencies and add the deadsnakes PPA for Python 3.10
+# change according to time zone
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/Sao_Paulo
+
+# requirements
 RUN apt-get update && \
-    apt-get install -y software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update && \
     apt-get install -y \
-    python3.10 \
-    python3.10-distutils \
-    python3.10-venv \ 
-    python3-pip \
+    wget \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    libboost-all-dev \
+    libcairomm-1.0-dev \
+    libgtk-3-dev \
+    tzdata \
+    gnupg2 \
+    curl
 
-# Set Python 3.10 as the default version
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# install Miniconda (conda) on Ubuntu
+RUN curl -sSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh && \
+    bash miniconda.sh -b -p /opt/conda && \
+    rm miniconda.sh
 
-# Create a virtual environment with Python 3.10
-RUN python3 -m venv /app/venv
+ENV PATH=/opt/conda/bin:$PATH
 
-# Upgrade pip inside the virtual environment
-RUN /app/venv/bin/pip install --upgrade pip
+RUN conda init bash
 
-# Install PyTorch with the appropriate CUDA version
-RUN /app/venv/bin/pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
-
-# Install additional libraries one by one
-RUN /app/venv/bin/pip install torch_geometric pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
-RUN /app/venv/bin/pip install git+https://github.com/pyt-team/TopoNetX.git
-RUN /app/venv/bin/pip install git+https://github.com/pyt-team/TopoModelX.git
-RUN /app/venv/bin/pip install networkx ogb
-RUN /app/venv/bin/pip install networkx torchinfo
+# create and activate conda environment with Python 3.10
+RUN conda create -y -n difflifting python=3.10
+RUN conda install -n difflifting -c conda-forge graph-tool
+# Instale as dependências do PyTorch com CUDA 12.1
+RUN conda install -n difflifting -y -c pytorch -c nvidia \
+    pytorch==2.4.1 \
+    torchvision==0.19.1 \
+    torchaudio==2.4.1 \
+    pytorch-cuda=12.1
 
 
-# Set environment variables to ensure Python uses the correct environment
-ENV PATH="/app/venv/bin:$PATH"
+RUN conda run -n difflifting pip install --upgrade pip
 
-# Run a simple command to confirm the setup
-CMD ["python3", "-c", "import torch; print(torch.__version__)"]
+# more requirements
+RUN conda run -n difflifting pip install torch_geometric
+RUN conda run -n difflifting pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
+RUN conda run -n difflifting pip install git+https://github.com/pyt-team/TopoNetX.git
+RUN conda run -n difflifting pip install git+https://github.com/pyt-team/TopoModelX.git
+RUN conda run -n difflifting pip install ogb colorama networkx torchinfo entmax
+
+
+
+# default command
+CMD ["/bin/bash"]
