@@ -381,6 +381,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         data = random_coauthor_amazon_splits(data, dataset.num_classes, None)
 
     elif dataset in HETEROPHILIC_DATASETS:
+        mask_nr = torch.randint(0, 10, (1,)).item()
         if dataset in WEBKBDatasets:
             dataset = WebKB(root='data', name=dataset, transform=T.NormalizeFeatures())
             if args.gnn == "GPS":
@@ -391,7 +392,9 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
                 data = lift_topology(dataset, args)[0]
 
 
-
+            data.train_mask = data.train_mask[:, mask_nr]
+            data.val_mask = data.val_mask[:, mask_nr]
+            data.test_mask = data.test_mask[:, mask_nr]
         elif dataset in WIKIPEDIADatasets:
             dataset = WikipediaNetwork(root='data', name=dataset, transform=T.NormalizeFeatures())
             if args.gnn == "GPS":
@@ -402,24 +405,16 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
                 data = lift_topology(dataset, args)[0]
 
 
-            # data.train_mask = data.train_mask[:, mask_nr]
-            # data.val_mask = data.val_mask[:, mask_nr]
-            # data.test_mask = data.test_mask[:, mask_nr]
-    mask_nr = torch.randint(0, 10, (1,)).item()
-    data.train_mask = data.train_mask[:, mask_nr]
-    mask_n2 = torch.randint(0, 10, (1,)).item()
-    data.val_mask = data.val_mask[:, mask_n2]
-    mask_n3= torch.randint(0, 10, (1,)).item()
-    data.test_mask = data.test_mask[:, mask_n3]
-    print(data.train_mask.sum())
-    print(data.test_mask.sum())
-    print(data.val_mask.sum())
-    data = cross_validation_split(
-        data, dataset_name=args.dataset, curr_seed=mask_nr
-    )
-    print(data.train_mask.sum())
-    print(data.test_mask.sum())
-    print(data.val_mask.sum())
+            data.train_mask = data.train_mask[:, mask_nr]
+            data.val_mask = data.val_mask[:, mask_nr]
+            data.test_mask = data.test_mask[:, mask_nr]
+
+    if args.use_dcm_split:
+        mask_nr = torch.randint(0, 10, (1,)).item()
+        data = cross_validation_split(
+            data, dataset_name=args.dataset, curr_seed=mask_nr
+        )
+
 
     dataloaders = get_data_loaders([data], [data], [data])
     return dataloaders, dataset.num_features, dataset.num_classes

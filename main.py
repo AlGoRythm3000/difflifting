@@ -25,6 +25,8 @@ triangle_counts = []  # Add this list to store triangle counts
 torch.autograd.set_detect_anomaly(True)
 import tempfile
 
+torch.set_default_tensor_type("torch.cuda.FloatTensor")
+torch.set_float32_matmul_precision("high")
 if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
