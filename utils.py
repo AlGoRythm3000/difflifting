@@ -93,6 +93,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--depth", type=int, default=2)
     parser.add_argument("--no_readout", action='store_false')
     parser.add_argument("--signed", type=bool, default=False)
+    parser.add_argument("--use_dcm_split", action='store_true')
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
         "--deepset_aggr_type", type=str, default="sum", choices=["sum", "cat", "mean"]
