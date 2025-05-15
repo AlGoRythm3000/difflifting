@@ -52,9 +52,7 @@ if __name__ == '__main__':
 
     def train_eval(model, loss_fn, optimizer, evaluator, epoch, device):
         train_loss = train_node(train_loader, model, loss_fn, optimizer, device)
-        # val_loss, val_acc = evaluate_node(model, val_loader, loss_fn, device, "val_mask",evaluator)
-        val_loss = None
-        val_acc = None
+        val_loss, val_acc = evaluate_node(model, val_loader, loss_fn, device, "val_mask",evaluator)
         test_loss, test_acc = evaluate_node(model, test_loader, loss_fn, device, "test_mask", evaluator)
         return train_loss, val_loss, val_acc, test_loss, test_acc
 
@@ -110,21 +108,21 @@ if __name__ == '__main__':
         #     k_vs.append(None)
         print(
             f"{epoch:3d}: Train Loss: {train_loss:.3f},"
-           # f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
+            f" Val Loss: {val_loss:.3f}, Val Acc: {val_accuracies[-1]:.3f}, "
             f"Test Loss: {test_loss:.3f}, Test Acc: {test_accuracies[-1]:.3f}"
         )
 
         scheduler.step(test_acc)
 
-        # if epoch > 2 and val_accuracies[-1] <= val_accuracies[-2 - epochs_no_improve]:
-        #     epochs_no_improve = epochs_no_improve + 1
-        #
-        # else:
-        #     epochs_no_improve = 0
+        if epoch > 2 and val_accuracies[-1] <= val_accuracies[-2 - epochs_no_improve]:
+            epochs_no_improve = epochs_no_improve + 1
 
-        # if epochs_no_improve >= args.early_stop_patience:
-        #     print("Early stopping!")
-        #     break
+        else:
+            epochs_no_improve = 0
+
+        if epochs_no_improve >= args.early_stop_patience:
+            print("Early stopping!")
+            break
 
     results = {
         "train_losses": tensor(train_losses),
