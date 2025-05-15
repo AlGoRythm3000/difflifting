@@ -6,7 +6,7 @@ from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 from torch_geometric.data import Batch
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch_geometric.transforms import AddRandomWalkPE
-from torch_geometric.utils import degree
+from torch_geometric.utils import degree, to_undirected
 from torch_geometric.datasets import ZINC, TUDataset
 import torch_geometric.transforms as T
 from torch_geometric.datasets import KarateClub
@@ -114,7 +114,7 @@ def get_data_loaders(train_set, val_set=None, test_set=None, batch_size=1):
         batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-        generator=torch.Generator(device="cuda")
+       # generator=torch.Generator(device="cuda")
     )
     valid_loader = DataloadDataset(
         val_set
@@ -124,7 +124,7 @@ def get_data_loaders(train_set, val_set=None, test_set=None, batch_size=1):
         batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-        generator=torch.Generator(device="cuda")
+   #     generator=torch.Generator(device="cuda")
     )
     test_loader = DataloadDataset(
         test_set
@@ -134,7 +134,7 @@ def get_data_loaders(train_set, val_set=None, test_set=None, batch_size=1):
         batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-        generator=torch.Generator(device="cuda")
+   #     generator=torch.Generator(device="cuda")
     )
     return train_loader, valid_loader, test_loader
 
@@ -384,11 +384,13 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         mask_nr = torch.randint(0, 10, (1,)).item()
         if dataset in WEBKBDatasets:
             dataset = WebKB(root='data', name=dataset, transform=T.NormalizeFeatures())
+
             if args.gnn == "GPS":
                 dataset = add_positional_encoding(args, dataset)
             if args.lifting == "diffLifting":
                 data = dataset[0]
             else:
+
                 data = lift_topology(dataset, args)[0]
 
 

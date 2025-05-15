@@ -7,6 +7,7 @@ import torch
 import torch_geometric
 import torch_geometric.utils
 from scipy.linalg import fractional_matrix_power as fmp
+from torch_geometric.utils import to_undirected
 
 from tools.lifting.lifting import Graph2HypergraphLifting
 
@@ -302,11 +303,11 @@ class HypergraphKernelLifting(Graph2HypergraphLifting):
         -------
         ValueError: if the input is incomplete or in incorrect format.
         """
+        data.edge_index = to_undirected(data.edge_index)
         if not torch_geometric.utils.is_undirected(data.edge_index):
             raise ValueError(
                 "HypergraphKernelLifting is applicable only to undirected graphs"
             )
-
         num_nodes = data.x.shape[0]
         data.pos = data.x
         num_hyperedges = num_nodes
