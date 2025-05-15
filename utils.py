@@ -51,11 +51,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="GIN", choices=["GIN", "GPS"])
-    parser.add_argument("--tnn", type=str, default="CXN", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT"])
+    parser.add_argument("--tnn", type=str, default="UniGCNII", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="MUTAG",
+        default="Texas",
         choices=["Cora", "Citeseer", "Pubmed",   #Classic Node classification datasets
              "CS", "Physics","Cornell", "Texas", "Wisconsin","chameleon", "crocodile", "squirrel", #Heterophilous Graph dataset
                  "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
@@ -64,10 +64,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lifting",
         type=str,
-        default="diffLifting",
+        default="HypergraphKernelLifting",
         choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "DiscreteConfigurationComplexLifting",  "diffLifting", "HypergraphKHopLifting", "HypergraphKNNLifting", "HypergraphKernelLifting"],
     )
-    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
@@ -102,6 +102,6 @@ def parse_args() -> argparse.Namespace:
         "--global_pooling", type=str, default="mean", choices=["sum", "mean"]
     )
 
-    parser.add_argument("--t", type=float, default=1.0, help="Temperature parameter for the heat kernel.")
+    parser.add_argument("--t", type=float, default=5, help="Temperature parameter for the heat kernel.")
 
     return parser.parse_args()
