@@ -1,5 +1,5 @@
 
-# $\partial$Lift (DiffLifting)
+# DiffLifting
 
 ## HOW TO RUN
 ```
