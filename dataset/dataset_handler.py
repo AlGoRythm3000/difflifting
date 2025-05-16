@@ -114,7 +114,6 @@ def get_data_loaders(train_set, val_set=None, test_set=None, batch_size=1):
         batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-       # generator=torch.Generator(device="cuda")
     )
     valid_loader = DataloadDataset(
         val_set
@@ -124,7 +123,6 @@ def get_data_loaders(train_set, val_set=None, test_set=None, batch_size=1):
         batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-   #     generator=torch.Generator(device="cuda")
     )
     test_loader = DataloadDataset(
         test_set
@@ -134,7 +132,6 @@ def get_data_loaders(train_set, val_set=None, test_set=None, batch_size=1):
         batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-   #     generator=torch.Generator(device="cuda")
     )
     return train_loader, valid_loader, test_loader
 
@@ -163,7 +160,6 @@ def divide_train_val_test_split(dataset: PygGraphPropPredDataset, args):
 
         return get_data_loaders(train_data, data_val, data_test, args.batch_size)
 
-        # return train_loader, valid_loader, test_loader
 
 
 def get_graph_classification_dataset(dataset: str, batch_size, args, device, seed=42):
@@ -313,7 +309,7 @@ def remove_duplicated_edges(edge_index):
     for i in range(edge_index.size(1)):
         u = edge_index[0, i].item()
         v = edge_index[1, i].item()
-        arestas.add((min(u, v), max(u, v)))  # Armazenar como um par ordenado
+        arestas.add((min(u, v), max(u, v)))
     return torch.tensor(list(arestas), dtype=torch.long).T
 
 
@@ -338,8 +334,8 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
         data.train_mask = torch.zeros(data.num_nodes, dtype=bool)
         data.train_mask[:num_train_nodes] = True
         data.test_mask = ~data.train_mask
-        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
-        
+
+
     elif dataset=="Cora":
         dataset = Planetoid(root='data', name='cora', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
@@ -348,8 +344,7 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
-        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
-        
+
     elif dataset=="Citeseer":
         dataset = Planetoid(root='data', name='CiteSeer', split="full", transform=T.NormalizeFeatures())
         if args.gnn == "GPS":
@@ -358,7 +353,6 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
-        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
 
     elif dataset=="Pubmed":
         dataset = Planetoid(root='data', name='pubmed', split="full", transform=T.NormalizeFeatures())
@@ -368,7 +362,6 @@ def get_node_prediction_dataset(dataset, args,dim=None, seed=42):
             data = dataset[0]
         else:
             data = lift_topology(dataset, args)[0]
-        # data.edge_index_undirected= remove_duplicated_edges(data.edge_index)
     elif dataset in COAUTHOR_DATASETS:
         dataset = Coauthor(root='data', name=dataset, transform=T.NormalizeFeatures())
 
@@ -454,11 +447,6 @@ def index_to_mask(index, size):
     return mask
 
 def random_coauthor_amazon_splits(data, num_classes, lcc_mask):
-    # Set random coauthor/co-purchase splits:
-    # * 20 * num_classes labels for training
-    # * 30 * num_classes labels for validation
-    # rest labels for testing
-
     indices = []
     if lcc_mask is not None:
         for i in range(num_classes):
@@ -612,10 +600,7 @@ class WikipediaNetworkDCM(InMemoryDataset):
             data = f.read().split("\n")[1:-1]
             data = [[int(v) for v in r.split("\t")] for r in data]
         edge_index = torch.tensor(data, dtype=torch.long).t().contiguous()
-        # Remove self-loops
-        # edge_index, _ = remove_self_loops(edge_index)
-        # Make the graph undirected
-        # edge_index = to_undirected(edge_index)
+
         edge_index, _ = coalesce(edge_index, None, x.size(0), x.size(0))
 
         data = Data(x=x, edge_index=edge_index, y=y)
@@ -694,9 +679,6 @@ class WebKBDCM(InMemoryDataset):
             data = f.read().split("\n")[1:-1]
             data = [[int(v) for v in r.split("\t")] for r in data]
             edge_index = torch.tensor(data, dtype=torch.long).t().contiguous()
-            # edge_index = to_undirected(edge_index)
-            # We also remove self-loops in these datasets in order not to mess up.
-            # edge_index, _ = remove_self_loops(edge_index)
             edge_index, _ = coalesce(edge_index, None, x.size(0), x.size(0))
 
         data = Data(x=x, edge_index=edge_index, y=y)
@@ -726,7 +708,6 @@ def cross_validation_split(data, dataset_name=None, curr_seed=0):
     final_splits = loaded_data["splits"].item()
 
     n_nodes = data.y.shape[0]
-    # Get current split
     train_indices = torch.as_tensor(final_splits[curr_seed]["Train_idx"])
     val_indices = torch.as_tensor(final_splits[curr_seed]["Test_idx"])
     test_indices = torch.as_tensor(final_splits[curr_seed]["Test_idx"])

@@ -17,7 +17,7 @@ from torch_geometric.nn.attention import PerformerAttention
 class GIN(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels,n_layers_gnn , task="classification"):
         super(GIN, self).__init__()
-        ## Initialization Step
+
         self.initialization = GINConv(
             torch.nn.Sequential(
                 Linear(in_channels, hidden_channels),
@@ -28,7 +28,6 @@ class GIN(nn.Module):
             ),
             eps=0.,
             train_eps=False)
-        ## Aggregation Layers
         self.mp_layers = torch.nn.ModuleList()
         for i in range(n_layers_gnn - 1):
             self.mp_layers.append(
@@ -43,8 +42,7 @@ class GIN(nn.Module):
                     eps=0.,
                     train_eps=False)
             )
-        # self.lin1 = Linear(hidden_channels, hidden_channels)
-        # self.lin2 = Linear(hidden_channels, out_channels)
+
 
 
     def forward(self, data ):
@@ -52,13 +50,6 @@ class GIN(nn.Module):
         x = self.initialization(x, edge_index)
         for conv in self.mp_layers:
             x = conv(x, edge_index)
-
-
-        # x = global_mean_pool(x, batch)
-        # ## Classification Head
-        # x = F.relu(self.lin1(x))
-        # x = F.dropout(x, p=0.5, training=self.training)
-        # x = self.lin2(x)
         return x
 
 
@@ -118,7 +109,6 @@ class GPS(torch.nn.Module):
             x = torch.cat((self.node_emb(x), self.pe_lin(x_pe)), 1)
         else:
             x = torch.cat((self.node_emb(x).squeeze(-1), self.pe_lin(x_pe)), 1)
-        # edge_attr = self.edge_emb(edge_attr)
 
         for conv in self.convs:
             x = conv(x, edge_index, batch)

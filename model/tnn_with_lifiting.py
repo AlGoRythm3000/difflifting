@@ -33,7 +33,7 @@ class AttentionLifting(nn.Module):
                                                                                                        device=device)
         self.W3 = torch.randn(feature_dim, feature_dim, device=device) if feature_dim else torch.randn(64, 64,
                                                                                                        device=device)
-        self.k_v = torch.tensor(2.0)  # Automatically requires_grad=True
+        self.k_v = torch.tensor(2.0)
         self.phi = torch.nn.Sequential(
             torch.nn.Linear(feature_dim if feature_dim else 64, feature_dim * 2 if feature_dim else 128),
             torch.nn.ReLU(),
@@ -61,44 +61,39 @@ class AttentionLifting(nn.Module):
             [key.split("_")[1] for key in data if ("incidence" in key and "-" not in key)]
         )
 
-        self.k_v = data["k_v"]  # Automatically requires_grad=True
+        self.k_v = data["k_v"]
 
         for elem in keys:
             if f"x_{elem}" not in data:
                 idx_to_project = 0 if elem == "hyperedges" else int(elem) - 1
                 incidence = data["incidence_" + elem]
 
-                # Get nodes involved in each structure
+
                 node_features = data[f"x_{idx_to_project}"]
 
-                # For each structure (edge/hyperedge), get its incident nodes
+
                 structures = []
                 for i in range(incidence.shape[1]):
                     nodes = torch.where(incidence[:, i] != 0)[0]
                     if len(nodes) > 0:
                         structures.append((i, nodes))
 
-                # Compute lifted features for each structure
                 lifted_features = []
                 for struct_idx, nodes in structures:
                     features = node_features[nodes]
 
-                    # Compute attention scores using the gradient-preserving k_v
                     scaling_factor = torch.sqrt(self.k_v)
                     query = torch.matmul(features, self.W1.t())
                     key = torch.matmul(features, self.W2.t())
                     scores = torch.matmul(query, key.t()) / scaling_factor
 
-                    # Apply attention
                     attention = torch.softmax(scores, dim=-1)
                     values = torch.matmul(features, self.W3.t())
                     messages = torch.matmul(attention, values)
 
-                    # Apply order-invariant aggregation
                     structure_feature = self.phi(messages.mean(dim=0, keepdim=True))
                     lifted_features.append(structure_feature)
 
-                # Combine all lifted features
                 if lifted_features:
                     data["x_" + elem] = torch.cat(lifted_features, dim=0)
                 else:
@@ -146,17 +141,14 @@ def compute_node_cell_matrix(
     counts = mask.sum(dim=1).clamp(min=1)                     # [C, 1]
     pooled = summed / counts                                  # [C, D]
 
-    # 3) Compute 2‑class logits & sharpened probabilities
-    #    just like your edge code, but on cycles
+
     cell_logits = cell_mlp(pooled)                            # [C, 2]
     sharp_logits = cell_logits * sharpening_factor            # [C, 2]
     cell_probs = F.softmax(sharp_logits, dim=-1)[:, 1]         # sharpened p(class=1), [C]
 
-    # 4) Straight‑through estimator
     cell_hard = (cell_probs > 0.5).float()                    # [C], 0 or 1
     cell_ste  = cell_hard + (cell_probs - cell_probs.detach())# [C], STE
 
-    # ⚠️ Check if no cycle was selected
     if cell_ste.sum() == 0:
         empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
         empty_values = torch.empty((0,), device=device)
@@ -187,16 +179,12 @@ def compute_node_cell_matrix(
         requires_grad=True
     ).coalesce()
 
-    ### >>>> REMOVE ALL‐ZERO COLUMNS (cycles) WITHOUT BREAKING GRADIENTS <<<< ###
 
-    # 1. Sum per cycle‐column to detect empty cycles
     col_sums = torch.sparse.sum(node_cell_sampled, dim=0).to_dense()  # [C]
 
-    # 2. Mask of cycles to keep
     keep_mask = col_sums > 0  # [C] bool
     if keep_mask.numel() == 0 or not keep_mask.any():
-        # Check if keep_mask is empty
-        # Handle the case where no cycles are kept
+
         empty_indices = torch.empty((2, 0), dtype=torch.long, device=device)
         empty_values = torch.empty((0,), device=device)
         node_cell_sampled = torch.sparse_coo_tensor(
@@ -206,12 +194,9 @@ def compute_node_cell_matrix(
             device=device
         ).coalesce()
         return pooled, node_cell_sampled
-    # 3. Duplicate mask to match the flattened indices length
-    #    Here each index in `indices` refers directly to a cycle,
-    #    so we just index by the second row:
+
     mask_cycles = keep_mask[indices[1]]  # [K]
 
-    # 4. Filter indices & values
     filtered_indices = indices[:, mask_cycles]
     filtered_values  = values[mask_cycles]
 
@@ -290,27 +275,13 @@ class TNN_KNN_MLP_N(nn.Module):
                     nn.Linear(hidden_dim, 1),
                 )
             if tnn_type not in ["UniGCNII", "UniGCN", "AST", "HyperGAT", "UniGIN", "UniSAGE"]:
-                # self.mlp_cell = nn.Sequential(
-                #     nn.Linear(k, 2 * hidden_dim),  # Use k as input dimension
-                #     nn.ReLU(),
-                #     nn.Linear(2 * hidden_dim, hidden_dim),
-                #     nn.ReLU(),
-                #     nn.Dropout(0.5),
-                #     nn.Linear(hidden_dim, k),  # Output k features
-                # )
+
                 self.edge_mlp = nn.Sequential(
                     nn.Linear(embedding_dim, 64),  # Input: concatenated edge embeddings
                     nn.ReLU(),
                     nn.Linear(64, 2)  # Output logits for two classes (0 and 1)
                 )
-                # self.mlp_cell2 = nn.Sequential(
-                #     nn.Linear(128, 2 * hidden_dim),  # Change input dimension to 128
-                #     nn.ReLU(),
-                #     nn.Linear(2 * hidden_dim, hidden_dim),
-                #     nn.ReLU(),
-                #     nn.Dropout(0.5),
-                #     nn.Linear(hidden_dim, 1),  # Output: probability per cycle
-                # )
+
             self.k_mlp = torch.nn.Sequential(
                 torch.nn.Linear(embedding_dim, 64),
                 torch.nn.ReLU(),
@@ -449,12 +420,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 node_triangle_matrix = mask.scatter_(1, knn_indices, straight_through_samples.repeat(1, torch.max(
                     self.k_v).long().item()))
 
-                # This is not used, but we keep it for future use
-                # incidence_matrix_2 = incidence_matrix_1.T @ node_triangle_matrix
-                # incidence_matrix_2 = torch.div(incidence_matrix_2, 2, rounding_mode='trunc')
-                # ---- # ----- # ----- #
 
-                # print("incidence matrix before concatenation:", incidence_matrix_1.shape)
                 incidence_matrix_1 = torch.cat((incidence_matrix_1, node_triangle_matrix), dim=1)
                 # print(incidence_matrix_1.shape)
                 # print("incidence matrix after concatenation:", incidence_matrix_1.shape)
@@ -470,10 +436,6 @@ class TNN_KNN_MLP_N(nn.Module):
 
                 # 2) Build keep‐mask
                 keep = col_sums > 0  # [total_cols], bool
-
-                # Print the number of columns before and after pruning
-                # print(f"Number of columns before pruning: {incidence_matrix_1.size(1)}")
-                # print(f"Number of columns after pruning: {keep.sum().item()}")
 
                 # 3) Index out zero columns (gather on dim=1 preserves grads)
                 incidence_pruned = incidence_matrix_1[:, keep]  # [num_nodes, num_kept]
@@ -491,7 +453,6 @@ class TNN_KNN_MLP_N(nn.Module):
                 # print(out)
                 return out["logits"]
 
-                ## Now the Cellular Complex Diff Lifiting
             else:
 
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
@@ -568,9 +529,7 @@ class TNN_KNN_MLP_N(nn.Module):
                     device=edge_classes.device
                 ).coalesce()
 
-                ### >>>> REMOVE ZERO‐ONLY COLUMNS (keep gradient) <<<< ###
 
-                # 1. Sum per column to detect non‑zero columns
                 col_sums = torch.sparse.sum(incidence_matrix_sampled, dim=0).to_dense()  # [num_edges_sampled]
 
                 # 2. Boolean mask of columns to keep
@@ -745,14 +704,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 }
 
                 lifted_data = self.projection_sum(data_for_lifting)
-                # print("Lifted data keys:", lifted_data.keys())
-                # print(lifted_data)
-                # for key, value in lifted_data.items():
-                #     print(f"Key: {key}, Shape: {value.shape if isinstance(value, torch.Tensor) else 'Not a Tensor'}")
-                # print("Data keys:", data.keys)
-                # print(data)
 
-                # data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
                 lifted_data["adjacency_1"] = A
                 # print(lifted_data)
@@ -760,10 +712,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 # print(lifted_data)
                 lifted_data_obj = Data(**lifted_data)
                 tnn_output = self.tnn(lifted_data_obj)
-                # tnn_output['x_0'] = self.dropout(tnn_output["x_0"])
-                # tnn_output['x_1'] = self.dropout(tnn_output["x_1"])
-                # tnn_output['x_2'] = self.dropout(tnn_output["x_2"])
-                # print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
+
                 batch["incidence_1"] = incidence_matrix_1
 
                 batch["incidence_2"] = incidence_matrix_2
@@ -774,12 +723,9 @@ class TNN_KNN_MLP_N(nn.Module):
 
         # print("data ": data)
         data = self.feature_encoder(data)
-        # print("data after feature encoder", data)
-        # print("shapes before tnn: ", data["x_0"].shape)
+
         tnn_output = self.tnn(data)
-        # print("shapes tnn: ", tnn_output["x_0"].shape, tnn_output["x_1"].shape)
         out = self.readout(tnn_output, batch)
-        # print(out)
         return out["logits"]
 
 

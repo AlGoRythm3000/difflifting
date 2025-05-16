@@ -1,5 +1,4 @@
 from topomodelx.nn.cell.ccxn import CCXN
-#from topomodelx.nn.cell.cwn import CWN
 from topomodelx.nn.hypergraph.allset_transformer import AllSetTransformer
 from topomodelx.nn.hypergraph.unisage import UniSAGE
 from topomodelx.nn.hypergraph.unigin import UniGIN
@@ -10,7 +9,6 @@ from topomodelx.nn.simplicial.scn2 import SCN2
 from torch import nn
 from torch_geometric.nn import global_mean_pool
 
-from layers.unignns.unigat import UniGAT
 from tools.normalize import normalize_matrix
 
 
@@ -27,8 +25,7 @@ class TNN(nn.Module):
             self.base_model =  UniGCNII(in_channels, in_channels).to(device)
         elif model_type == "UniSAGE":
             self.base_model =  UniSAGE(in_channels, in_channels).to(device)
-        elif model_type == "UniGAT":
-            self.base_model =  UniGAT(in_channels, in_channels).to(device)
+
         elif model_type == "UniGCN":
             self.base_model = UniGCN(in_channels, in_channels).to(device)
         elif model_type == "HyperGAT":
@@ -38,7 +35,6 @@ class TNN(nn.Module):
         elif model_type == "AST":
             self.base_model =  AllSetTransformer(in_channels, in_channels,  n_layers=n_layers, n_heads=4).to(device)
         
-        #print("Type of base_model:", type(self.base_model))
         self.incidence_models = ["UniGCN", "HyperGAT", "UniGIN", "UniSAGE"]
         self.pooling_fun = global_mean_pool
         self.normalize_laplacians = normalize_laplacians
@@ -54,9 +50,6 @@ class TNN(nn.Module):
                             normalize_matrix(data.hodge_laplacian_1, 1),
                             normalize_matrix(data.hodge_laplacian_2, 2))
         elif self.model_type == "CWN":
-            #print(f"Shape of cell features (x_2): {data.x_2.shape}")
-            #print(f"Shape of adjacency matrix (adjacency_1): {data.adjacency_1.shape}")
-            #print(f"Shape of incidence matrix (incidence_2): {data.incidence_2.shape}")
             x = self.base_model(data.x_0, data.x_1, data.x_2,
                             data.adjacency_1,
                             data.incidence_2,
@@ -141,7 +134,6 @@ class CWN(torch.nn.Module):
         **kwargs,
     ):
         super().__init__()
-        # in_channels_0=7
         self.proj_0 = torch.nn.Linear(in_channels_0, hid_channels)
         self.proj_1 = torch.nn.Linear(in_channels_1, hid_channels)
         self.proj_2 = torch.nn.Linear(in_channels_2, hid_channels)
@@ -192,14 +184,8 @@ class CWN(torch.nn.Module):
         x_2 : torch.Tensor, shape = (n_edges, in_channels_2)
             Final hidden states of the faces (2-cells).
         """
-        #print("Initial x_0 shape:", x_0.shape)
-        #print("Projection layer weights (proj_0):", self.proj_0.weight.shape)
+
         x_0 = F.elu(self.proj_0(x_0))
-        #print("Initial x_1 shape:", x_1.shape)
-        #print("Projection layer weights (proj_1):", self.proj_1.weight.shape)
-        #print("Projection layer bias (proj_1):", self.proj_1.bias.shape)
-        #print("x_1 after projection:", self.proj_1(x_1).shape)
-        #print("x_1 after applying ELU activation:", F.elu(self.proj_1(x_1)).shape)
         x_1 = F.elu(self.proj_1(x_1))
         x_2 = F.elu(self.proj_2(x_2))
 
@@ -218,7 +204,6 @@ class CWN(torch.nn.Module):
 
 import torch.nn.functional as F
 
-from topomodelx.base.conv import Conv
 
 
 class CWNLayer(nn.Module):
@@ -648,20 +633,14 @@ class UniGCNII(torch.nn.Module):
         x_1 : torch.Tensor
             Output hyperedge features.
         """
-        #print("FIRST X_0", x_0)
         x_0 = self.input_drop(x_0)
         x_0 = self.initial_linear_layer(x_0)
         x_0 = torch.nn.functional.relu(x_0)
         x_0_skip = x_0
-        #print("FORWARD X_0", x_0)
-        #assert(False)
         for layer in self.layers:
             x_0, x_1 = layer(x_0, incidence_1, x_0_skip)
-            #print("first",x_0, "\n\n ")
             x_0 = self.layer_drop(x_0)
-            #print("second",x_0, "\n\n ")
             x_0 = torch.nn.functional.relu(x_0)
-            #print("last",x_0, "\n\n ")
 
         return x_0, x_1
 
@@ -781,28 +760,21 @@ class UniGCNIILayer(torch.nn.Module):
         x_skip = x_0 if x_skip is None else x_skip
         incidence_1_transpose = incidence_1.transpose(0, 1)
 
-        # First message without any learning or parameters
         x_1 = self.conv(x_0, incidence_1_transpose)
 
-        # Compute node and edge degrees for normalization.
         node_degree = torch.sum(incidence_1.to_dense(), dim=1)
 
-        # Avoid division by zero by adding a small epsilon
-        epsilon = 1e-8  # Small constant to prevent division by zero
-        node_degree = node_degree + epsilon  # Add epsilon to node degrees
+        epsilon = 1e-8
+        node_degree = node_degree + epsilon
 
-        # Average node degree for each edge.
         edge_degree = torch.sum(torch.diag(node_degree) @ incidence_1, dim=0)
 
-        # Add epsilon to edge degrees as well to prevent division by zero
         edge_degree = edge_degree + epsilon
 
-        # Second message normalized with node and edge degrees (using broadcasting)
         x_0 = (1 / torch.sqrt(node_degree).unsqueeze(-1)) * self.conv(
             x_1, incidence_1 @ torch.diag(1 / torch.sqrt(edge_degree))
         )
 
-        # Introduce skip connections with hyperparameter alpha and beta
         x_combined = ((1 - self.alpha) * x_0) + (self.alpha * x_skip)
         x_0 = ((1 - self.beta) * x_combined) + self.beta * self.linear(x_combined)
 
