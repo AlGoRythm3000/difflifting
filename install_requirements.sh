@@ -1,20 +1,18 @@
-# Caminho do ambiente virtual
+
 venvPath="myvenv"
 
-# Cria o ambiente virtual, se ainda não existir
+
 if [ ! -d "$venvPath" ]; then
-    echo "Criando o ambiente virtual..."
+    echo "Create virtual environment..."
     python3.10 -m venv $venvPath
 else
-    echo "Ambiente virtual já existe."
+    echo "Virtual Environment already exists."
 fi
 
-# Ativa o ambiente virtual
-echo "Ativando o ambiente virtual..."
+echo "Activating venv"
 source "$venvPath/bin/activate"
 
-# Lista de bibliotecas a serem instaladas
-bibliotecas=(
+libraries=(
     "torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cpu"
     "torch_geometric"
     "torchinfo"
@@ -26,10 +24,9 @@ bibliotecas=(
     "torchinfo==1.8.0"
 )
 
-# Instala as bibliotecas
 for biblioteca in "${bibliotecas[@]}"; do
-    echo "Instalando $biblioteca no ambiente virtual..."
+    echo "Installing $biblioteca in venv..."
     pip3 install $biblioteca
 done
 
-echo "Instalação completa!"
+echo "Installation sucessful!"
