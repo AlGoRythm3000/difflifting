@@ -24,9 +24,9 @@ libraries=(
     "torchinfo==1.8.0"
 )
 
-for biblioteca in "${bibliotecas[@]}"; do
-    echo "Installing $biblioteca in venv..."
-    pip3 install $biblioteca
+for lib in "${libraries[@]}"; do
+    echo "Installing $lib in venv..."
+    pip3 install $lib
 done
 
 echo "Installation sucessful!"
