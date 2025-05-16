@@ -3,7 +3,7 @@ FROM ubuntu:20.04
 WORKDIR /workdir
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=America/Sao_Paulo
+ENV TZ=   #Add your timezone
 
 
 RUN apt-get update && \

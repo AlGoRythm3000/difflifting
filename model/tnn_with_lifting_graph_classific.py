@@ -767,14 +767,6 @@ class TNN_KNN_MLP_G(nn.Module):
                 }
 
                 lifted_data = self.projection_sum(data_for_lifting)
-                #print("Lifted data keys:", lifted_data.keys())
-                #print(lifted_data)
-                # for key, value in lifted_data.items():
-                #     print(f"Key: {key}, Shape: {value.shape if isinstance(value, torch.Tensor) else 'Not a Tensor'}")
-                # print("Data keys:", data.keys)
-                # print(data)
-
-                #data = self.__create_laplacians(data, incidence_matrix_1, lifted_data, data_for_lifting)
 
                 lifted_data["adjacency_1"] = A
                 #print(lifted_data)
