@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import torch
 from torch import tensor
@@ -19,6 +20,9 @@ train_losses = []
 test_accuracies = []
 train_accuracies = []
 triangle_counts = []  # Add this list to store triangle counts
+
+train_times = []
+test_times = []
 
 torch.autograd.set_detect_anomaly(True)
 import tempfile
@@ -84,16 +88,37 @@ if __name__ == '__main__':
     k_vs = []  # list to track chosen k_v for each epoch
 
     for epoch in range(1, args.max_epochs):
-        train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
-            model,
-            train_loader,
-            val_loader,
-            test_loader,
-            loss_fn,
-            optimizer,
-            evaluator,
-            device
-        )
+        if epoch <= 30:
+            start_train = time.time()
+            train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
+                model,
+                train_loader,
+                val_loader,
+                test_loader,
+                loss_fn,
+                optimizer,
+                evaluator,
+                device
+            )
+            end_train = time.time()
+            train_times.append(end_train - start_train)
+
+            # For test time, measure only the test phase
+            start_test = time.time()
+            _, test_acc_only = evaluate(model, test_loader, loss_fn, device, evaluator)
+            end_test = time.time()
+            test_times.append(end_test - start_test)
+        else:
+            train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
+                model,
+                train_loader,
+                val_loader,
+                test_loader,
+                loss_fn,
+                optimizer,
+                evaluator,
+                device
+            )
 
         test_accuracies.append(test_acc)
         test_losses.append(test_loss)  # test losses
@@ -128,7 +153,8 @@ if __name__ == '__main__':
         "test_losses": tensor(test_losses),
         "val_accuracies": tensor(val_accuracies),
         "val_losses": tensor(val_losses),
-          
+        "train_times": train_times,
+        "test_times": test_times,
         "params": {
             "gnn": args.gnn,
             "num_layers_gnn": args.num_layers_gnn,
