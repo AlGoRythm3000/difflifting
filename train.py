@@ -12,6 +12,13 @@ def train(loader, model, loss_fn, optimizer, device):
         loss = loss_fn(out.squeeze(), batch.y.squeeze()) / batch.num_graphs
         loss.backward()
         optimizer.step()
+        #Logging gradients
+        # for name, param in model.named_parameters():
+        #     if param.grad is not None:
+        #         print(f"{name} gradient: {param.grad}")
+        #     else:
+        #         print(f"{name} has no gradient")
+
         total_loss += loss.item()
     return total_loss / len(loader)
 

@@ -257,8 +257,8 @@ def compute_node_cell_matrix(
 class TNN_KNN_MLP_G(nn.Module):
 
     def __init__(self, in_channels, args, hidden_dim, num_classes, k=2, diff_lifting=False, global_pool="sum",
-                 device="cpu", tnn_type="SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64, k_max=10):
-        super(TNN_KNN_MLP_G, self).__init__()
+             device="cpu", tnn_type="SCN2", num_layers_tnn=4, num_layers_gnn=3, embedding_dim=64, k_max=10, deterministic=False):
+        super().__init__()
         self.k = k
         self.k_min = 2
         self.k_max = k_max
@@ -270,8 +270,8 @@ class TNN_KNN_MLP_G(nn.Module):
         self.dataset = args.dataset
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels,in_channels,in_channels], out_channels=hidden_dim,
                                                     proj_dropout=0.5)
-        if args.dataset == "ogbg-molhiv":
-            self.atom_encoder = AtomEncoder(emb_dim=in_channels)
+        # if args.dataset == "ogbg-molhiv":
+        #     self.atom_encoder = AtomEncoder(emb_dim=in_channels)
 
         if diff_lifting:
 
@@ -392,7 +392,7 @@ class TNN_KNN_MLP_G(nn.Module):
         data = batch
         if self.diff_lifting:
             x, edge_index = data.x, data.edge_index
-            x = self.atom_encoder(x).float()  # x is input atom feature
+            #x = self.atom_encoder(x).float()  # x is input atom feature
 
             #print("Initial data.x shape:", data.x.shape)  # Initial shape
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
@@ -405,26 +405,20 @@ class TNN_KNN_MLP_G(nn.Module):
 
             #print("embeddings requires_grad:", embeddings.requires_grad)
 
-            k_logits = self.k_mlp(embedding_mean)  # Shape: [1, k_max - k_min + 1]
-
-
-            k_sample = F.gumbel_softmax(k_logits, tau=1.0, hard=True)
-
-            #print("k_sample:", k_sample)
-
-            k_range = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=k_logits.dtype)
-
-            #print("k_range:", k_range)
-
-
-            # Compute the differentiable integer sample as the dot product of the one-hot vector and the range tensor.
-            k_v = torch.sum(k_sample * k_range, dim=-1)  # Shape: [1]
-
-            #print("k_v:", k_v)
-            #print("k_v grad:", k_v.grad)
-
-            self.k_v = k_v
-
+            # --- k_v sampling ---
+            if getattr(self, "deterministic", False):
+                k_logits = self.k_mlp(embedding_mean)
+                p = F.softmax(k_logits, dim=-1)
+                k_range = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=k_logits.dtype)
+                k_v = (p * k_range.unsqueeze(0)).sum(dim=-1)
+                k_v = k_v.round()
+                self.k_v = k_v
+            else:
+                k_logits = self.k_mlp(embedding_mean)
+                k_sample = F.gumbel_softmax(k_logits, tau=1.0, hard=True)
+                k_range = torch.arange(self.k_min, self.k_max + 1, device=k_logits.device, dtype=k_logits.dtype)
+                k_v = torch.sum(k_sample * k_range, dim=-1)
+                self.k_v = k_v
 
             mask_knn = torch.nn.functional.one_hot(data.batch_0, num_classes=vertex_slice.shape[0] - 1)
 
@@ -445,9 +439,13 @@ class TNN_KNN_MLP_G(nn.Module):
                 knn_indices = knn_selected
                 pooled_embeddings = embeddings[knn_indices.long()].mean(axis=1, keepdim=True).squeeze()
 
+                # --- inclusion sampling ---
                 include_probs = torch.sigmoid(self.mlp(pooled_embeddings))  # Shape: [num_nodes, 1]
-                inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
-                straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
+                if getattr(self, "deterministic", False):
+                    straight_through_samples = (include_probs > 0.5).float()
+                else:
+                    inclusion_samples = (torch.rand_like(include_probs) < include_probs).float()
+                    straight_through_samples = inclusion_samples + (include_probs - include_probs.detach())
 
                 num_edges = edge_index_undirected.size(1)
 
@@ -761,7 +759,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 data_for_lifting = {
                     "x_0": embeddings,  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
-                    "incidence_2": incidence_matrix_2,  # edge_to-triangle
+                    "incidence_2": incidence_matrix_2,  # edge_to_triangle
                     "adjacency_1": A,
                     "adjacency_0": A_0
                 }
