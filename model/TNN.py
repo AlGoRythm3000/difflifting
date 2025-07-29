@@ -14,6 +14,8 @@ from model.models.topotune import TopoTune
 from tools.normalize import normalize_matrix
 import torch
 
+from model.GNN import GIN
+
 
 class GCN(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels):
@@ -64,6 +66,8 @@ class TNN(nn.Module):
                 sub_gccn_model = GAT(in_channels=in_channels, hidden_channels=dim_hidden, num_layers=1,
                                  out_channels=dim_hidden,
                              heads=2, v2=False)
+            elif sub_gccn == "GIN":
+                sub_gccn_model = GIN(in_channels, dim_hidden, dim_hidden, 2).to(device)
             else:
                 sub_gccn_model = GCN(in_channels=in_channels, hidden_channels=dim_hidden, out_channels=dim_hidden,)
             backbone_config = {
@@ -71,7 +75,8 @@ class TNN(nn.Module):
                 "neighborhoods": neighborhoods,
                 "layers": 2,
                 "use_edge_attr": False,
-                "activation": "relu"
+                "activation": "relu",
+                "gnn_type": sub_gccn,
             }
             self.base_model = TopoTune(**backbone_config).to(device)
         self.incidence_models = ["UniGCN", "HyperGAT", "UniGIN", "UniSAGE"]

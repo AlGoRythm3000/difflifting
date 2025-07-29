@@ -6,6 +6,9 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.data import Data
 
+from model.GNN import GIN
+
+
 # from topobench.data.utils import get_routes_from_neighborhoods
 
 def get_routes_from_neighborhoods(neighborhoods):
@@ -62,6 +65,7 @@ class TopoTune(torch.nn.Module):
         layers,
         use_edge_attr,
         activation,
+        gnn_type="GAT",
     ):
         super().__init__()
         self.routes = get_routes_from_neighborhoods(neighborhoods)
@@ -72,7 +76,7 @@ class TopoTune(torch.nn.Module):
         self.graph_routes = torch.nn.ModuleList()
         self.GNN = [i for i in GNN.named_modules()]
         self.activation = activation
-
+        self.gnn_type = gnn_type
         # Instantiate GNN layers
         num_routes = len(self.routes)
         for _ in range(self.layers):
@@ -240,12 +244,19 @@ class TopoTune(torch.nn.Module):
         torch.tensor
             The output of the GNN (updated features).
         """
-        expanded_out = self.graph_routes[layer_idx][route_index](
-            batch_route.x,
-            batch_route.edge_index,
-            #    batch_route.edge_weight, # TODO : some gnns take edge_weight (1d) and some take edge_attr.
-            #    batch_route.edge_attr,
-        )
+        if self.gnn_type=="GIN":
+            expanded_out = self.graph_routes[layer_idx][route_index](
+                batch_route
+                #    batch_route.edge_weight, # TODO : some gnns take edge_weight (1d) and some take edge_attr.
+                #    batch_route.edge_attr,
+            )
+        else:
+            expanded_out = self.graph_routes[layer_idx][route_index](
+                batch_route.x,
+                batch_route.edge_index,
+                #    batch_route.edge_weight, # TODO : some gnns take edge_weight (1d) and some take edge_attr.
+                #    batch_route.edge_attr,
+            )
         out = expanded_out[:n_dst_cells]
         return out
 

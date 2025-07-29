@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
         "--deepset_aggr_type", type=str, default="sum", choices=["sum", "cat", "mean"]
     )
     parser.add_argument(
-        "--sub_gccn_model", type=str, default="GAT", choices=["GAT", "GCN"]
+        "--sub_gccn_model", type=str, default="GIN", choices=["GAT", "GCN" , "GIN"]
     )
     parser.add_argument(
         "--global_pooling", type=str, default="mean", choices=["sum", "mean"]
