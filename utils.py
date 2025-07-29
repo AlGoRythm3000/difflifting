@@ -51,11 +51,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="GIN", choices=["GIN", "GPS"])
-    parser.add_argument("--tnn", type=str, default="UniGCNII", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT"])
+    parser.add_argument("--tnn", type=str, default="TOPOTUNE", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT", "TOPOTUNE"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="Texas",
+        default="NCI1",
         choices=["Cora", "Citeseer", "Pubmed",   #Classic Node classification datasets
              "CS", "Physics","Cornell", "Texas", "Wisconsin","chameleon", "crocodile", "squirrel", #Heterophilous Graph dataset
                  "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lifting",
         type=str,
-        default="HypergraphKernelLifting",
+        default="diffLifting",
         choices=["SimplicialCliqueLifting", "SimplicialKHopLifting","CellCycleLifting", "DiscreteConfigurationComplexLifting",  "diffLifting", "HypergraphKHopLifting", "HypergraphKNNLifting", "HypergraphKernelLifting"],
     )
     parser.add_argument("--lr", type=float, default=0.005, help="Learning rate.")
@@ -91,12 +91,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positional_encoder_dim", type=int, default=4)
     parser.add_argument("--positional_walking_len", type=int, default=20)
     parser.add_argument("--depth", type=int, default=2)
-    parser.add_argument("--no_readout", action='store_false')
+    parser.add_argument("--no_readout", action='store_true')
     parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--use_dcm_split", action='store_true')
     parser.add_argument("--no-bn", dest="bn", action="store_false")
     parser.add_argument(
         "--deepset_aggr_type", type=str, default="sum", choices=["sum", "cat", "mean"]
+    )
+    parser.add_argument(
+        "--sub_gccn_model", type=str, default="GIN", choices=["GAT", "GCN" , "GIN"]
     )
     parser.add_argument(
         "--global_pooling", type=str, default="mean", choices=["sum", "mean"]

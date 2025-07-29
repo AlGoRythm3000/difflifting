@@ -1,3 +1,4 @@
+from sympy import false
 from topomodelx.nn.cell.ccxn import CCXN
 from topomodelx.nn.hypergraph.allset_transformer import AllSetTransformer
 from topomodelx.nn.hypergraph.unisage import UniSAGE
@@ -7,13 +8,36 @@ from topomodelx.nn.hypergraph.unigcn import UniGCN
 from layers.hypergnns.hypergat import HyperGAT
 from topomodelx.nn.simplicial.scn2 import SCN2
 from torch import nn
-from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn import global_mean_pool, GAT, GCNConv
 
+from model.models.topotune import TopoTune
 from tools.normalize import normalize_matrix
+import torch
+
+from model.GNN import GIN
+
+
+class GCN(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super().__init__()
+        self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels = out_channels
+        self.conv1 = GCNConv(in_channels, hidden_channels,
+                             normalize=False)
+        self.conv2 = GCNConv(hidden_channels, out_channels,
+                             normalize=False)
+
+    def forward(self, x, edge_index, edge_weight=None):
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.conv1(x, edge_index, edge_weight).relu()
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.conv2(x, edge_index, edge_weight)
+        return x
 
 
 class TNN(nn.Module):
-    def __init__(self, model_type, in_channels, hidden_channels, in_channels_1=7, in_channels_2=7, normalize_laplacians=True,n_layers=4,device="cpu", **kwargs):
+    def __init__(self, model_type, in_channels, hidden_channels, in_channels_1=7, in_channels_2=7, normalize_laplacians=True,n_layers=4,device="cpu",sub_gccn="GAT", **kwargs):
         super().__init__()
         if model_type == "CWN":
             self.base_model = CWN(in_channels, in_channels_1, in_channels_2, hidden_channels, n_layers=n_layers, **kwargs).to(device)
@@ -34,7 +58,27 @@ class TNN(nn.Module):
             self.base_model = UniGIN(in_channels, in_channels, n_layers=n_layers).to(device)
         elif model_type == "AST":
             self.base_model =  AllSetTransformer(in_channels, in_channels,  n_layers=n_layers, n_heads=4).to(device)
-        
+        elif model_type == "TOPOTUNE":
+
+            neighborhoods = ["adjacency_0", "incidence_0","adjacency_1", "incidence_1"]
+            dim_hidden = hidden_channels
+            if sub_gccn == "GAT":
+                sub_gccn_model = GAT(in_channels=in_channels, hidden_channels=dim_hidden, num_layers=1,
+                                 out_channels=dim_hidden,
+                             heads=2, v2=False)
+            elif sub_gccn == "GIN":
+                sub_gccn_model = GIN(in_channels, dim_hidden, dim_hidden, 2).to(device)
+            else:
+                sub_gccn_model = GCN(in_channels=in_channels, hidden_channels=dim_hidden, out_channels=dim_hidden,)
+            backbone_config = {
+                "GNN": sub_gccn_model,
+                "neighborhoods": neighborhoods,
+                "layers": 2,
+                "use_edge_attr": False,
+                "activation": "relu",
+                "gnn_type": sub_gccn,
+            }
+            self.base_model = TopoTune(**backbone_config).to(device)
         self.incidence_models = ["UniGCN", "HyperGAT", "UniGIN", "UniSAGE"]
         self.pooling_fun = global_mean_pool
         self.normalize_laplacians = normalize_laplacians
@@ -84,7 +128,8 @@ class TNN(nn.Module):
             model_out["x_1"] = x[1]
 
             return model_out
-
+        elif self.model_type == "TOPOTUNE":
+            x = self.base_model(data)
 
         model_out["x_0"] = x[0]
         model_out["x_1"] = x[1]
