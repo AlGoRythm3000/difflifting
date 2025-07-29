@@ -207,7 +207,7 @@ class TopoTune(torch.nn.Module):
         device = getattr(params, f"x_{src_rank}").device
         feat_on_dst = torch.zeros_like(getattr(params, f"x_{dst_rank}"))
         x_in = torch.vstack([feat_on_dst, getattr(params, f"x_{src_rank}")])
-        batch_expanded = torch.cat([dst_batch, src_batch], dim=0)
+        batch_expanded = torch.cat([torch.tensor(dst_batch), torch.tensor(src_batch)], dim=0)
 
         batch_route = Data(
             x=x_in,

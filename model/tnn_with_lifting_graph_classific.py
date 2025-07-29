@@ -269,9 +269,10 @@ class TNN_KNN_MLP_G(nn.Module):
         self.num_classes = num_classes
         self.dataset = args.dataset
         self.feature_encoder = AllCellFeatureEncoder(in_channels=[in_channels,in_channels,in_channels], out_channels=hidden_dim,
-                                                    proj_dropout=0.5)
-        # if args.dataset == "ogbg-molhiv":
-        #     self.atom_encoder = AtomEncoder(emb_dim=in_channels)
+                                                  proj_dropout=0.5)
+        if args.dataset == "ogbg-molhiv":
+
+            self.atom_encoder = AtomEncoder(emb_dim=in_channels)
 
         if diff_lifting:
 
@@ -339,7 +340,8 @@ class TNN_KNN_MLP_G(nn.Module):
             in_channels_1=hidden_dim,
             in_channels_2=hidden_dim,
             n_layers=num_layers_tnn,
-            device=device
+            device=device,
+            sub_gccn=args.sub_gccn_model
         )
 
 
@@ -392,7 +394,8 @@ class TNN_KNN_MLP_G(nn.Module):
         data = batch
         if self.diff_lifting:
             x, edge_index = data.x, data.edge_index
-            #x = self.atom_encoder(x).float()  # x is input atom feature
+            if self.dataset=="ogbg-molhiv":
+                x = self.atom_encoder(x).float()  # x is input atom feature
 
             #print("Initial data.x shape:", data.x.shape)  # Initial shape
             edge_index_undirected, vertex_slice, new_slices, data.batch = remove_duplicate_edges(data)
@@ -769,6 +772,8 @@ class TNN_KNN_MLP_G(nn.Module):
                 lifted_data["adjacency_1"] = A
                 #print(lifted_data)
                 lifted_data["x_0"] = torch.div(lifted_data["x_0"], torch.max(self.k_v))
+                lifted_data["cell_statistics"] = cycles
+
                 #print(lifted_data)
                 lifted_data_obj = Data(**lifted_data)
                 tnn_output = self.tnn(lifted_data_obj)
@@ -776,6 +781,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 batch["incidence_1"]= incidence_matrix_1
 
                 batch["incidence_2"]= incidence_matrix_2
+
                 out = self.readout(tnn_output, batch)
                 # print(out)
                 return out["logits"]
