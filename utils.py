@@ -51,11 +51,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DiffLifting for GNN tasks")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--gnn", type=str, default="GIN", choices=["GIN", "GPS"])
-    parser.add_argument("--tnn", type=str, default="TOPOTUNE", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT", "TOPOTUNE"])
+    parser.add_argument("--tnn", type=str, default="UniGIN", choices=["CWN", "SCN2", "CXN", "UniGCNII", "UniGIN", "UniGCN", "HyperGAT", "TOPOTUNE"])
     parser.add_argument(
         "--dataset",
         type=str,
-        default="NCI1",
+        default="PROTEINS",
         choices=["Cora", "Citeseer", "Pubmed",   #Classic Node classification datasets
              "CS", "Physics","Cornell", "Texas", "Wisconsin","chameleon", "crocodile", "squirrel", #Heterophilous Graph dataset
                  "ogbg-molhiv", "NCI1", "NCI109", "IMDB-BINARY",  # Graph Classification datasets
@@ -71,8 +71,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight_decay", type=float, default=0, help="Weight Decay.")
 
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
-    parser.add_argument("--num_layers", type=int, default=1, help="Number of tnn layers.")
-    parser.add_argument("--num_layers_gnn", type=int, default=1, help="Number of gnn layers ")
+    parser.add_argument("--num_layers", type=int, default=2, help="Number of tnn layers.")
+    parser.add_argument("--num_layers_gnn", type=int, default=2, help="Number of gnn layers ")
 
     parser.add_argument(
         "--max_epochs", type=int, default=1000, help="Number of epochs to train."
@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positional_encoder_dim", type=int, default=4)
     parser.add_argument("--positional_walking_len", type=int, default=20)
     parser.add_argument("--depth", type=int, default=2)
-    parser.add_argument("--no_readout", action='store_true')
+    parser.add_argument("--no_readout", action='store_false')
     parser.add_argument("--signed", type=bool, default=False)
     parser.add_argument("--use_dcm_split", action='store_true')
     parser.add_argument("--no-bn", dest="bn", action="store_false")
