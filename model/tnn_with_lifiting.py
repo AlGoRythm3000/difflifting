@@ -696,7 +696,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 data_for_lifting = {}
                 x_featured = self.feature_encoder(data)
                 data_for_lifting = {
-                    "x_0": x_featured.x_0,  # Node features
+                    "x_0": embeddings,  # Node features
                     "incidence_1": incidence_matrix_1,  # Node-to-edge incidence matrix
                     "incidence_2": incidence_matrix_2,  # edge_to-triangle
                     "adjacency_1": A,
@@ -709,6 +709,7 @@ class TNN_KNN_MLP_N(nn.Module):
                 lifted_data["adjacency_1"] = A
                 # print(lifted_data)
                 lifted_data["x_0"] = torch.div(lifted_data["x_0"], torch.max(self.k_v))
+                lifted_data["cell_statistics"] = cycles
                 # print(lifted_data)
                 lifted_data_obj = Data(**lifted_data)
                 tnn_output = self.tnn(lifted_data_obj)
