@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_layers_gnn", type=int, default=2, help="Number of gnn layers ")
 
     parser.add_argument(
-        "--max_epochs", type=int, default=1000, help="Number of epochs to train."
+        "--max_epochs", type=int, default=50, help="Number of epochs to train."
     )
     parser.add_argument(
         "--number_of_mask", type=int, default=1, help="if the dataset is heterophyllic you have to choose from 0 to 9"

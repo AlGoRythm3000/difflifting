@@ -357,7 +357,10 @@ class TNN_KNN_MLP_N(nn.Module):
             edge_index_undirected, vertex_slice = remove_duplicate_edges_for_nodes_dataset(data)
 
             # print("number of edges: ", edge_index_undirected.size(1))
-            embeddings = self.gnn(data.to("cuda"))
+            
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            embeddings = self.gnn(data.to(device))  
+            # embeddings = self.gnn(data.to("cuda") )
 
             # Keep gradient through mean operation
             embedding_mean = embeddings

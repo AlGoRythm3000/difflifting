@@ -3,8 +3,7 @@ FROM ubuntu:20.04
 WORKDIR /workdir
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=   #Add your timezone
-
+ENV TZ=Europe/Paris
 
 RUN apt-get update && \
     apt-get install -y \
@@ -25,6 +24,9 @@ ENV PATH=/opt/conda/bin:$PATH
 
 RUN conda init bash
 
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    
 RUN conda create -y -n difflifting python=3.10
 RUN conda install -n difflifting -c conda-forge graph-tool
 RUN conda install -n difflifting -y -c pytorch -c nvidia \
@@ -33,13 +35,14 @@ RUN conda install -n difflifting -y -c pytorch -c nvidia \
     torchaudio==2.4.1 \
     pytorch-cuda=12.1
 
-
 RUN conda run -n difflifting pip install --upgrade pip
 
 RUN conda run -n difflifting pip install torch_geometric
 RUN conda run -n difflifting pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
-RUN conda run -n difflifting pip install git+https://github.com/pyt-team/TopoNetX.git
-RUN conda run -n difflifting pip install git+https://github.com/pyt-team/TopoModelX.git
+
+# Modification ici pour éviter l'incompatibilité de la version Git avec Python 3.10
+RUN conda run -n difflifting pip install toponetx topomodelx
+
 RUN conda run -n difflifting pip install ogb colorama networkx torchinfo entmax
 
 CMD ["/bin/bash"]
