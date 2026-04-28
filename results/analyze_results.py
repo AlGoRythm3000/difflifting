@@ -85,6 +85,14 @@ def extract_final_score(file_path):
 
 
 if __name__ == "__main__":
-    plot_results(FILE_PATH)
-    extract_final_score(FILE_PATH)
+    # plot_results(FILE_PATH)
+    # extract_final_score(FILE_PATH)
+    # import os, glob
     
+    import glob
+
+    # glob.glob trouve directement tous les fichiers finissant par .results
+    for filename in glob.glob("*.results"):
+        print(f"\n--- {filename} ---")
+        extract_final_score(filename)
+                

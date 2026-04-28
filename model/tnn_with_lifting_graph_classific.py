@@ -434,6 +434,12 @@ class TNN_KNN_MLP_G(nn.Module):
             if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or
                 self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
 
+                # for each node, find the indices of its k_v nearest neighbors, even for small graphs
+                num_elements = distances.size(-1)
+                k_requested = torch.max(self.k_v).long().item()
+                actual_k = min(k_requested, num_elements)
+                knn_indices = torch.topk(-distances, actual_k, dim=-1)[1]
+
                 knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
                 aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)
