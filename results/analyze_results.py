@@ -83,6 +83,75 @@ def extract_final_score(file_path):
     
     return final_test_score
 
+def extract_score_silent(file_path):
+    """
+    Fait la même chose que extract_final_score mais sans les "print",
+    pour ne pas polluer l'affichage du tableau final.
+    """
+    if not os.path.exists(file_path):
+        return None
+
+    results = torch.load(file_path, map_location=torch.device('cpu'))
+    val_accuracies = results["val_accuracies"].numpy()
+    test_accuracies = results["test_accuracies"].numpy()
+    
+    best_epoch_idx = np.argmax(val_accuracies)
+    return test_accuracies[best_epoch_idx]
+
+def aggregate_results():
+    import glob
+    
+    # Dictionnaire pour grouper les scores
+    # Clé : Nom de l'expérience (ex: "MUTAG_diffLifting_GPS_UniGCN")
+    # Valeur : Liste des scores des différents seeds
+    experiments = {}
+
+    # Sécuriser le chemin de recherche
+    dossier_script = os.path.dirname(os.path.abspath(__file__))
+    fichiers = glob.glob(os.path.join(dossier_script, "*.results"))
+
+    for file_path in fichiers:
+        filename = os.path.basename(file_path)
+        
+        # Découper le nom pour isoler le seed
+        # Exemple de nom : MUTAG_diffLifting_GPS_UniGCN_42_k_adaptative.results
+        parts = filename.split('_')
+        
+        # Dans ton format, le seed est toujours l'avant-avant-dernier élément (index -3)
+        # On s'assure qu'on ne plante pas si un fichier a un nom bizarre
+        if len(parts) >= 3 and parts[-3].isdigit():
+            # On reconstitue le nom de base sans le seed ni le suffixe "k_adaptative.results"
+            base_exp_name = "_".join(parts[:-3])
+            
+            # Extraire le score
+            score = extract_score_silent(file_path)
+            
+            if score is not None:
+                if base_exp_name not in experiments:
+                    experiments[base_exp_name] = []
+                experiments[base_exp_name].append(score)
+
+    # affichage tableau recap
+    print("\n" + "="*90)
+    print(f"{'Nom de lexpérience':<55} | {'Moyenne ± Std':<20} | {'Seeds'}")
+    print("="*90)
+
+    # tri par ordre alphabetique
+    for exp_name in sorted(experiments.keys()):
+        scores = experiments[exp_name]
+        
+        # Conversion en pourcentage pour plus de lisibilité
+        mean_score = np.mean(scores)*100
+        std_score = np.std(scores)*100
+        num_seeds = len(scores)
+        
+        # Affichage formaté (ex: 72.50 ± 1.20 %)
+        print(f"{exp_name:<55} | {mean_score:>6.2f} ± {std_score:>4.2f}   | {num_seeds}/3")
+        
+    print("="*90)
+
+
+
 
 if __name__ == "__main__":
     # plot_results(FILE_PATH)
@@ -95,4 +164,7 @@ if __name__ == "__main__":
     for filename in glob.glob("*.results"):
         print(f"\n--- {filename} ---")
         extract_final_score(filename)
-                
+        plot_results(filename)
+
+    # Lancer l'analyse globale et afficher le tableau
+    aggregate_results()

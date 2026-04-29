@@ -431,25 +431,7 @@ class TNN_KNN_MLP_G(nn.Module):
 
             distances = mask_knn * distances + (1 - mask_knn) * 1e7
 
-            if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or
-                self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
-
-<<<<<<< Updated upstream
-                # for each node, find the indices of its k_v nearest neighbors, even for small graphs
-                num_elements = distances.size(-1)
-                k_requested = torch.max(self.k_v).long().item()
-                actual_k = min(k_requested, num_elements)
-                knn_indices = torch.topk(-distances, actual_k, dim=-1)[1]
-
-                knn_indices = torch.topk(-distances, torch.max(self.k_v).long().item(), dim=-1)[1]
-=======
-                # # for each node, find the indices of its k_v nearest neighbors, even for small graphs
-                # num_elements = distances.size(-1)
-                # k_requested = torch.max(self.k_v).long().item()
-                # actual_k = min(k_requested, num_elements)
-                # knn_indices = torch.topk(-distances, actual_k, dim=-1)[1]
-                
-                # --- DEBUT DE LA CORRECTION ---
+            if (self.tnn_type == "UniGCNII" or self.tnn_type == "UniGCN" or self.tnn_type == "HyperGAT" or self.tnn_type == "UniGIN" or self.tnn_type == "UniSAGE"):
                 num_elements = distances.size(-1)
                 k_requested = torch.max(self.k_v).long().item()
 
@@ -457,29 +439,24 @@ class TNN_KNN_MLP_G(nn.Module):
                     # Cas normal : il y a assez de nœuds
                     knn_indices = torch.topk(-distances, k_requested, dim=-1)[1]
                 else:
-                    # Cas extrême (petits graphes) : on prend tout ce qui est disponible
                     knn_indices = torch.topk(-distances, num_elements, dim=-1)[1]
                     
-                    # On isole le premier voisin trouvé (en général le nœud lui-même, distance 0)
-                    # On utilise 0:1 pour conserver le nombre de dimensions du tenseur
-                    first_neigh = knn_indices[..., 0:1] 
-                    
-                    # On calcule combien d'éléments il manque
+                    first_neigh = knn_indices[..., 0:1]
                     pad_size = k_requested - num_elements
-                    
-                    # On crée la forme (shape) du padding en remplaçant la dernière dimension par pad_size
                     padding_shape = list(knn_indices.shape)
                     padding_shape[-1] = pad_size
                     
-                    # On duplique ce premier voisin pour combler le vide
                     padding = first_neigh.expand(padding_shape)
                     
-                    # On rassemble le tout : la taille finale sur la dernière dimension sera exactement k_requested
                     knn_indices = torch.cat([knn_indices, padding], dim=-1)
-# --- FIN DE LA CORRECTION ---
-                
 
->>>>>>> Stashed changes
+                # # for each node, find the indices of its k_v nearest neighbors, even for small graphs
+                # num_elements = distances.size(-1)
+                # k_requested = torch.max(self.k_v).long().item()
+                # actual_k = min(k_requested, num_elements)
+                # knn_indices = torch.topk(-distances, actual_k, dim=-1)[1]
+
+
                 aranged_indices = torch.arange(torch.max(self.k_v).long().item(), device=x.device).expand(self.k_v.shape[0], -1)
                 kv_mask = aranged_indices < k_v.unsqueeze(1)
                 first_neighbor = knn_indices[:, 0].unsqueeze(1)
