@@ -436,7 +436,7 @@ class TNN_KNN_MLP_G(nn.Module):
                 k_requested = torch.max(self.k_v).long().item()
 
                 if num_elements >= k_requested:
-                    # Cas normal : il y a assez de nœuds
+                    # normal case where we have enough neighbors
                     knn_indices = torch.topk(-distances, k_requested, dim=-1)[1]
                 else:
                     knn_indices = torch.topk(-distances, num_elements, dim=-1)[1]

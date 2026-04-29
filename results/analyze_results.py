@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-# Remplace par le chemin exact de ton fichier généré dans le dossier "results/"
-# Exemple de nom : "PROTEINS_diffLifting_GIN_UniGIN_42_k_adaptative.results"
 FILE_PATH = "results/PROTEINS_diffLifting_GIN_HyperGAT_42_k_adaptative.results" 
 
 def plot_results(file_path):
@@ -12,11 +10,10 @@ def plot_results(file_path):
         print(f"Erreur : Le fichier {file_path} n'existe pas.")
         return
 
-    # Charger les résultats
-    # Les tenseurs étant sur CPU ou GPU, on s'assure de les charger sur le CPU pour l'affichage
+    # loading resultats on the CPU from file 
     results = torch.load(file_path, map_location=torch.device('cpu'))
     
-    # Extraire les données et les convertir en listes numpy
+    # extrac and conver data to numpy for plotting
     train_losses = results["train_losses"].numpy()
     val_losses = results["val_losses"].numpy()
     test_losses = results["test_losses"].numpy()
@@ -26,10 +23,10 @@ def plot_results(file_path):
     
     epochs = range(1, len(train_losses) + 1)
 
-    # Créer les graphiques
+    # create graphs
     plt.figure(figsize=(14, 5))
 
-    # Graphique des pertes (Loss)
+    # loss graphs 
     plt.subplot(1, 2, 1)
     plt.plot(epochs, train_losses, label='Train Loss', marker='o', markersize=3)
     plt.plot(epochs, val_losses, label='Validation Loss', marker='o', markersize=3)
@@ -40,7 +37,7 @@ def plot_results(file_path):
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
 
-    # Graphique des précisions (Accuracy)
+    # accuracy graphs
     plt.subplot(1, 2, 2)
     plt.plot(epochs, val_accuracies, label='Validation Accuracy', marker='o', markersize=3)
     plt.plot(epochs, test_accuracies, label='Test Accuracy', marker='o', markersize=3)
@@ -52,7 +49,7 @@ def plot_results(file_path):
 
     plt.suptitle(FILE_PATH.split("/")[-1].replace(".results", ""))
     
-    # Afficher les paramètres utilisés pour ce run
+    # display model parameters
     print("--- Paramètres du modèle ---")
     for key, value in results["params"].items():
         print(f"{key}: {value}")
@@ -70,24 +67,24 @@ def extract_final_score(file_path):
     val_accuracies = results["val_accuracies"].numpy()
     test_accuracies = results["test_accuracies"].numpy()
     
-    # Trouver l'époque avec la meilleure validation (attention, argmax donne l'index, donc époque - 1)
+    # finding the best epoch based on validation accuracy
     best_epoch_idx = np.argmax(val_accuracies)
     
-    # Extraire le score de test à CETTE époque précise
+    # extracting the corresponding validation accuracy and test accuracy at that epoch
     best_val_score = val_accuracies[best_epoch_idx]
     final_test_score = test_accuracies[best_epoch_idx]
     
-    print(f"Meilleure époque : {best_epoch_idx + 1}")
-    print(f"Validation Accuracy à cette époque : {best_val_score:.4f}")
-    print(f"Test Accuracy finale à rapporter : {final_test_score:.4f}")
+    print(f"Best epoch : {best_epoch_idx + 1}")
+    print(f"Validation Accuracy at this epoch : {best_val_score:.4f}")
+    print(f"Test Accuracy final to report : {final_test_score:.4f}")
     
     return final_test_score
 
 def extract_score_silent(file_path):
     """
-    Fait la même chose que extract_final_score mais sans les "print",
-    pour ne pas polluer l'affichage du tableau final.
+    Same as extract_final_score but without print statements, to be used in aggregate_results()
     """
+    
     if not os.path.exists(file_path):
         return None
 
@@ -101,29 +98,24 @@ def extract_score_silent(file_path):
 def aggregate_results():
     import glob
     
-    # Dictionnaire pour grouper les scores
-    # Clé : Nom de l'expérience (ex: "MUTAG_diffLifting_GPS_UniGCN")
-    # Valeur : Liste des scores des différents seeds
+    # dictionnary to groupe results by experiment name (without seed and suffix)
+    # key : name of the experiment (ex: MUTAG_diffLifting_GPS_UniGCN)
+    # value : list of test accuracies for different seeds (ex: [0.85, 0.87, 0.86])
     experiments = {}
 
-    # Sécuriser le chemin de recherche
     dossier_script = os.path.dirname(os.path.abspath(__file__))
     fichiers = glob.glob(os.path.join(dossier_script, "*.results"))
 
     for file_path in fichiers:
         filename = os.path.basename(file_path)
         
-        # Découper le nom pour isoler le seed
-        # Exemple de nom : MUTAG_diffLifting_GPS_UniGCN_42_k_adaptative.results
+        # isolating the seed and the suffix to get the base name of the experiment
         parts = filename.split('_')
         
-        # Dans ton format, le seed est toujours l'avant-avant-dernier élément (index -3)
-        # On s'assure qu'on ne plante pas si un fichier a un nom bizarre
         if len(parts) >= 3 and parts[-3].isdigit():
-            # On reconstitue le nom de base sans le seed ni le suffixe "k_adaptative.results"
             base_exp_name = "_".join(parts[:-3])
             
-            # Extraire le score
+            # extracting the final test score for this experiment
             score = extract_score_silent(file_path)
             
             if score is not None:
@@ -131,21 +123,20 @@ def aggregate_results():
                     experiments[base_exp_name] = []
                 experiments[base_exp_name].append(score)
 
-    # affichage tableau recap
+    # displaying the results in a formatted table
     print("\n" + "="*90)
-    print(f"{'Nom de lexpérience':<55} | {'Moyenne ± Std':<20} | {'Seeds'}")
+    print(f"{'Name of the experiment':<55} | {'Mean ± Std':<20} | {'Seeds'}")
     print("="*90)
 
     # tri par ordre alphabetique
     for exp_name in sorted(experiments.keys()):
         scores = experiments[exp_name]
         
-        # Conversion en pourcentage pour plus de lisibilité
+        # converting in percentage and calculating mean and std
         mean_score = np.mean(scores)*100
         std_score = np.std(scores)*100
         num_seeds = len(scores)
         
-        # Affichage formaté (ex: 72.50 ± 1.20 %)
         print(f"{exp_name:<55} | {mean_score:>6.2f} ± {std_score:>4.2f}   | {num_seeds}/3")
         
     print("="*90)
@@ -160,11 +151,10 @@ if __name__ == "__main__":
     
     import glob
 
-    # glob.glob trouve directement tous les fichiers finissant par .results
+    # glob.glob directly finds all files matching the pattern, we look for all .results files in the current directory
     for filename in glob.glob("*.results"):
         print(f"\n--- {filename} ---")
         extract_final_score(filename)
         plot_results(filename)
 
-    # Lancer l'analyse globale et afficher le tableau
     aggregate_results()
