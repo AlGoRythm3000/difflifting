@@ -137,11 +137,9 @@ def aggregate_results():
         std_score = np.std(scores)*100
         num_seeds = len(scores)
         
-        print(f"{exp_name:<55} | {mean_score:>6.2f} ± {std_score:>4.2f}   | {num_seeds}/3")
+        print(f"{exp_name:<55} | {mean_score:>6.2f} ± {std_score:>4.2f}   | {num_seeds}/5")
         
     print("="*90)
-
-
 
 
 if __name__ == "__main__":
