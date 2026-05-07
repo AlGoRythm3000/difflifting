@@ -47,7 +47,7 @@ def plot_results(file_path):
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
 
-    plt.suptitle(FILE_PATH.split("/")[-1].replace(".results", ""))
+    plt.suptitle(file_path.split("/")[-1].replace(".results", ""))
     
     # display model parameters
     print("--- Paramètres du modèle ---")
@@ -153,6 +153,6 @@ if __name__ == "__main__":
     for filename in glob.glob("*.results"):
         print(f"\n--- {filename} ---")
         extract_final_score(filename)
-        plot_results(filename)
+        # plot_results(filename)
 
     aggregate_results()
