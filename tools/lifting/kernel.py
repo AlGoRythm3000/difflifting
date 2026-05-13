@@ -152,7 +152,7 @@ def get_feat_kernel(
     if callable(kernel):
         return kernel(features)
     if kernel == "identity":
-        return torch.ones((features.shape[0], features.shape[0]))
+        return torch.eye(features.shape[0], dtype=features.dtype, device=features.device)
     raise ValueError(f"Unknown feature kernel type: {kernel}")
 
 

@@ -47,9 +47,6 @@ if __name__ == '__main__':
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-
-
-
     def train_eval(model, train_loader, val_loader, test_loader, loss_fn, optimizer, evaluator, device):
         train_loss = train(train_loader, model, loss_fn, optimizer, device)
         val_loss, val_acc = evaluate(model, val_loader, loss_fn, device, evaluator)
@@ -88,25 +85,38 @@ if __name__ == '__main__':
 
     for epoch in range(1, args.max_epochs):
         if epoch <= 30:
+            # start_train = time.time()
+            # train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
+            #     model,
+            #     train_loader,
+            #     val_loader,
+            #     test_loader,
+            #     loss_fn,
+            #     optimizer,
+            #     evaluator,
+            #     device
+            # )
+            # end_train = time.time()
+            # train_times.append(end_train - start_train)
+
+            # # For test time, measure only the test phase
+            # start_test = time.time()
+            # _, test_acc_only = evaluate(model, test_loader, loss_fn, device, evaluator)
+            # end_test = time.time()
+            # test_times.append(end_test - start_test)
+            
             start_train = time.time()
-            train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
-                model,
-                train_loader,
-                val_loader,
-                test_loader,
-                loss_fn,
-                optimizer,
-                evaluator,
-                device
-            )
+            train_loss = train(train_loader, model, loss_fn, optimizer, device)
             end_train = time.time()
             train_times.append(end_train - start_train)
 
-            # For test time, measure only the test phase
+            val_loss, val_acc = evaluate(model, val_loader, loss_fn, device, evaluator)
+
             start_test = time.time()
-            _, test_acc_only = evaluate(model, test_loader, loss_fn, device, evaluator)
+            test_loss, test_acc = evaluate(model, test_loader, loss_fn, device, evaluator)
             end_test = time.time()
             test_times.append(end_test - start_test)
+            
         else:
             train_loss, val_loss, val_acc, test_loss, test_acc = train_eval(
                 model,
