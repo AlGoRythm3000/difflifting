@@ -205,9 +205,22 @@ install_requirements.sh
 
 # Ignore dataset files if they are too large or not needed in the repository
 dataset/
+DATASETS/
 
 # Ignore config and state files
 *.swp
 *.swo
 *.txt
 *.pt
+
+# private notes
+docs/
+
+# typst manuscript 
+rapport/
+
+# analysis results
+analysis/ 
+
+env_difflifting.yml
+.claude/

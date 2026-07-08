@@ -132,6 +132,16 @@ def compute_node_cell_matrix(
     returns:
       pooled:             [C, D] mean‑pooled cycle embeddings
       incidence_sampled:  sparse [N, C] with STE inclusion values
+      cell_probs:         [C] sharpened acceptance probability phi(z_C) per
+                           candidate cycle, detached (read-only, exposed for
+                           structural analysis) -- saturates near 0/1
+      cell_probs_raw:     [C] pre-sharpening acceptance probability, detached
+                           -- same accept/reject decision as `cell_probs`
+                           (sharpening preserves the 0.5 threshold) but with
+                           actual dynamic range, more informative for
+                           correlating "confidence" against anything else
+      kept_mask:          [C] bool, True for candidate cycles actually accepted
+                           (cell_hard == 1), aligned with `cycles`/`cell_probs`
     """
     device = embeddings.device
     N, _ = embeddings.shape
@@ -155,6 +165,13 @@ def compute_node_cell_matrix(
     cell_logits = cell_mlp(pooled)                            # [C, 2]
     sharp_logits = cell_logits * sharpening_factor            # [C, 2]
     cell_probs = F.softmax(sharp_logits, dim=-1)[:, 1]         # sharpened p(class=1), [C]
+    # Pre-sharpening probability, read-only (never used for the STE/accept
+    # decision below): sharpening by a positive factor cannot flip which side
+    # of 0.5 a probability falls on, so exposing this changes no training
+    # behavior -- it only gives structural-analysis code a less saturated,
+    # more informative acceptance signal than `cell_probs` (which collapses
+    # to ~0/1 almost everywhere once sharpened).
+    cell_probs_raw = F.softmax(cell_logits, dim=-1)[:, 1].detach()
 
     # 4) Straight‑through estimator
     cell_hard = (cell_probs > 0.5).float()                    # [C], 0 or 1
@@ -170,7 +187,7 @@ def compute_node_cell_matrix(
             size=(N, 0),
             device=device
         ).coalesce()
-        return pooled, node_cell
+        return pooled, node_cell, cell_probs.detach(), cell_probs_raw, torch.zeros(C, dtype=torch.bool, device=device)
 
 
     # 5) Scatter these into a sparse [N, C] incidence matrix
@@ -209,7 +226,7 @@ def compute_node_cell_matrix(
             size=(N, 0),
             device=device
         ).coalesce()
-        return pooled, node_cell_sampled
+        return pooled, node_cell_sampled, cell_probs.detach(), cell_probs_raw, keep_mask.detach()
     # 3. Duplicate mask to match the flattened indices length
     #    Here each index in `indices` refers directly to a cycle,
     #    so we just index by the second row:
@@ -232,7 +249,7 @@ def compute_node_cell_matrix(
             device=device,
             requires_grad=True
         ).coalesce()
-        return pooled, node_cell_empty
+        return pooled, node_cell_empty, cell_probs.detach(), cell_probs_raw, keep_mask.detach()
 
     # remap columns 0..C‑1 → 0..C'‑1
     new_ids = torch.arange(kept_cycles.size(0), device=device)
@@ -252,7 +269,7 @@ def compute_node_cell_matrix(
         requires_grad=True
     ).coalesce()
 
-    return pooled, node_cell_pruned
+    return pooled, node_cell_pruned, cell_probs.detach(), cell_probs_raw, keep_mask.detach()
 
 class TNN_KNN_MLP_G(nn.Module):
 
@@ -576,6 +593,10 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 # Apply sharpening to logits and compute probabilities
                 edge_probs = torch.softmax(edge_logits * sharpening_factor, dim=-1)[:, 1]  # Sharpened probability of class 1
+                # Pre-sharpening probability, read-only: same accept/reject decision
+                # as `edge_probs` (sharpening by a positive factor preserves the 0.5
+                # threshold), kept only for structural analysis (see compute_node_cell_matrix).
+                edge_probs_raw = torch.softmax(edge_logits, dim=-1)[:, 1].detach()
 
                 # Step 3: Apply straight-through estimator
                 edge_classes = (edge_probs > 0.5).float()  # Binary values (0 or 1) during forward pass
@@ -616,6 +637,14 @@ class TNN_KNN_MLP_G(nn.Module):
 
                 # 2. Boolean mask of columns to keep
                 keep_mask  = col_sums > 0                                                  # [num_edges_sampled]
+
+                # Read-only bookkeeping for structural analysis (not used by the
+                # forward pass itself): acceptance probability phi(z_C) and node
+                # pair per candidate edge, aligned with `keep_mask`.
+                batch["candidate_edge_phi"] = edge_probs.detach()
+                batch["candidate_edge_phi_raw"] = edge_probs_raw
+                batch["candidate_edge_pairs"] = edge_indices_knn.detach()
+                batch["candidate_edge_kept"] = keep_mask.detach()
 
                 # 3. Duplicate mask so it matches the doubled‑up indices
                 mask_pairs = torch.cat([keep_mask, keep_mask], dim=0)                      # [2 * num_edges_sampled]
@@ -748,8 +777,12 @@ class TNN_KNN_MLP_G(nn.Module):
                         cycle for cycle in cycles if len(cycle) <= 6
                     ]
                 #print(cycles)
+                batch["candidate_cell_nodes"] = cycles
                 if len(cycles)> 0:
-                    polled_cycles, node_cell_matrix = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
+                    polled_cycles, node_cell_matrix, cell_probs, cell_probs_raw, cell_kept_mask = compute_node_cell_matrix(cycles, embeddings, self.edge_mlp)
+                    batch["candidate_cell_phi"] = cell_probs
+                    batch["candidate_cell_phi_raw"] = cell_probs_raw
+                    batch["candidate_cell_kept"] = cell_kept_mask
                     if node_cell_matrix._nnz() > 0:
                         incidence_matrix_2= incidence_matrix_1.T @ node_cell_matrix
                     else:
@@ -772,6 +805,9 @@ class TNN_KNN_MLP_G(nn.Module):
                         size=(num_edges_fake, 2),  # Two columns for two cells
                         device=incidence_matrix_1.device
                     ).coalesce()
+                    batch["candidate_cell_phi"] = torch.empty((0,), device=incidence_matrix_1.device)
+                    batch["candidate_cell_phi_raw"] = torch.empty((0,), device=incidence_matrix_1.device)
+                    batch["candidate_cell_kept"] = torch.empty((0,), dtype=torch.bool, device=incidence_matrix_1.device)
 
 
 
