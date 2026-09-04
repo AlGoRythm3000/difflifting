@@ -224,3 +224,9 @@ analysis/
 
 env_difflifting.yml
 .claude/
+
+# paper
+paper/
+
+# editor
+.vscode/
